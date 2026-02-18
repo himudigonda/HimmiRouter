@@ -1,30 +1,37 @@
-import { DefaultService as ControlService } from "@/client-control"
+import { DefaultService as ControlService, ModelResponse } from "@/client-control"
 import { DashboardLayout } from "@/components/layout"
 import { AnimatePresence, motion } from "framer-motion"
-import { Bot, Cpu, Key, Send, Sparkles, Trash2, User } from "lucide-react"
+import { Activity, AlertCircle, Bot, Cpu, Key, Send, Sparkles, Trash2, User } from "lucide-react"
 import React, { useEffect, useRef, useState } from "react"
 
 export const PlaygroundPage: React.FC = () => {
-  const [models, setModels] = useState<any[]>([])
+  const [models, setModels] = useState<ModelResponse[]>([])
+  const [filteredModels, setFilteredModels] = useState<ModelResponse[]>([])
+  const [selectedProvider, setSelectedProvider] = useState("All")
   const [selectedModel, setSelectedModel] = useState("")
   const [selectedKey, setSelectedKey] = useState("")
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
+  
+  // Stats
+  const [sessionUsage, setSessionUsage] = useState({ requests: 0, tokens: 0, cost: 0 })
+  
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const fetchData = async () => {
       const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
       if (!user.id) return
-
+      
       try {
         const [modelsData, userData] = await Promise.all([
           ControlService.listModelsModelsGet(),
           ControlService.getUserStatusUsersUserIdGet(user.id)
         ])
         setModels(modelsData)
+        setFilteredModels(modelsData)
         setCredits(userData.credits)
         
         // Check for model in URL query params
@@ -33,6 +40,9 @@ export const PlaygroundPage: React.FC = () => {
 
         if (modelParam && modelsData.some((m: any) => m.slug === modelParam)) {
           setSelectedModel(modelParam)
+          // Auto-select provider if possible
+          const m = modelsData.find((m: any) => m.slug === modelParam)
+          if (m?.company?.name) setSelectedProvider(m.company.name)
         } else if (modelsData.length > 0) {
           setSelectedModel(modelsData[0].slug)
         }
@@ -49,25 +59,50 @@ export const PlaygroundPage: React.FC = () => {
     }
   }, [messages])
 
+  // Filter models when provider changes
+  useEffect(() => {
+    if (selectedProvider === "All") {
+      setFilteredModels(models)
+    } else {
+      setFilteredModels(models.filter(m => m.company?.name === selectedProvider))
+    }
+    // Reset selected model if it's no longer in the list
+    /* if (!filteredModels.find(m => m.slug === selectedModel) && filteredModels.length > 0) {
+       setSelectedModel(filteredModels[0].slug)
+    } */
+  }, [selectedProvider, models])
+  
+  // Extract unique providers
+  const providers = ["All", ...Array.from(new Set(models.map(m => m.company?.name).filter(Boolean)))].sort()
+
   const handleSend = async () => {
     if (!input.trim() || !selectedModel || isLoading) return
+    if (!selectedKey) {
+      alert("Please enter a valid API Key. You can generate one in the Settings or via the API.")
+      return
+    }
 
     const userMessage = { role: "user", content: input }
-    // Only include completed messages (filter out empty assistant placeholders)
     const completedMessages = messages.filter(m => m.content !== "")
     const apiMessages = [...completedMessages, userMessage]
     
-    // Update display state: add user message + empty placeholder for streaming
     setMessages(prev => [...prev.filter(m => m.content !== ""), userMessage, { role: "assistant", content: "" }])
     setInput("")
     setIsLoading(true)
+
+    // Calculate estimated cost for this request (approximate)
+    const currentModel = models.find(m => m.slug === selectedModel)
+    const inputCostPer1M = currentModel?.mappings?.[0]?.input_token_cost || 0
+    const outputCostPer1M = currentModel?.mappings?.[0]?.output_token_cost || 0
+    
+    let currentResponseTokens = 0
 
     try {
       const response = await fetch("http://localhost:4000/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${selectedKey}`,
+          "Authorization": `Bearer ${selectedKey.trim()}`,
         },
         body: JSON.stringify({
           model: selectedModel,
@@ -78,13 +113,19 @@ export const PlaygroundPage: React.FC = () => {
 
       if (!response.ok) {
         const errText = await response.text()
-        throw new Error(`HTTP ${response.status}: ${errText}`)
+        let errMsg = errText
+        try {
+            const jsonErr = JSON.parse(errText)
+            errMsg = jsonErr.detail || jsonErr.error || errText
+        } catch {}
+        
+        throw new Error(`HTTP ${response.status}: ${errMsg} ${response.status === 401 ? "(Check your API Key)" : ""}`)
       }
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let assistantContent = ""
-
+      
       while (true) {
         const { done, value } = await reader!.read()
         if (done) break
@@ -101,30 +142,51 @@ export const PlaygroundPage: React.FC = () => {
               const delta = data.choices?.[0]?.delta?.content || ""
               assistantContent += delta
               
+              if (delta) currentResponseTokens += 1 // Crude approximation
+              
               setMessages(prev => {
                 const updated = [...prev]
                 updated[updated.length - 1] = { role: "assistant", content: assistantContent }
                 return updated
               })
+              
+              // If usage is returned in the stream (LiteLLM feature)
+              if (data.usage) {
+                  const u = data.usage
+                  const cost = ((u.prompt_tokens * inputCostPer1M) + (u.completion_tokens * outputCostPer1M)) / 1_000_000
+                  setSessionUsage(prev => ({
+                      requests: prev.requests, 
+                      tokens: prev.tokens + u.completion_tokens, // simplistic add
+                      cost: prev.cost + cost
+                  }))
+              }
+              
             } catch (e) {
-              // Ignore parse errors for empty/non-JSON chunks
+              // Ignore
             }
           }
         }
       }
       
-      // Refresh credits after stream ends
+      // Update session stats manually if usage wasn't streamed
+      setSessionUsage(prev => ({ 
+          requests: prev.requests + 1,
+          tokens: prev.tokens + (currentResponseTokens), // rough est
+          cost: prev.cost // only update accurate cost if backend sends it
+      }))
+      
+      // Refresh credits
       const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
       if (user.id) {
         const updatedUser = await ControlService.getUserStatusUsersUserIdGet(user.id)
         setCredits(updatedUser.credits)
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("Stream error", err)
       setMessages(prev => {
         const updated = [...prev]
-        updated[updated.length - 1] = { role: "assistant", content: `Error: ${(err as Error).message || "Failed to get response. Please check your API Key and Gateway connectivity."}` }
+        updated[updated.length - 1] = { role: "assistant", content: `Error: ${err.message || "Failed to get response."}` }
         return updated
       })
     } finally {
@@ -143,26 +205,56 @@ export const PlaygroundPage: React.FC = () => {
             </h1>
             <p className="text-muted-foreground text-sm">Experience ultra-low latency routing to 2026-era models.</p>
           </div>
-          <div className="flex items-center gap-3 glass border border-white/10 px-4 py-2 rounded-2xl">
-            <span className="text-xs text-muted-foreground uppercase font-semibold">Credits</span>
-            <span className="text-lg font-bold text-primary">{credits?.toLocaleString() ?? "---"}</span>
+          <div className="flex items-center gap-3">
+             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-muted-foreground mr-4">
+               <Activity className="w-3 h-3 text-emerald-500" />
+               <span>Session: {sessionUsage.requests} reqs</span>
+               <span className="w-px h-3 bg-white/10 mx-1" />
+               <span>≈ ${sessionUsage.cost.toFixed(4)}</span>
+             </div>
+             
+             <div className="flex items-center gap-3 glass border border-white/10 px-4 py-2 rounded-2xl">
+              <span className="text-xs text-muted-foreground uppercase font-semibold">Balance</span>
+              <span className="text-lg font-bold text-primary">${credits?.toFixed(4) ?? "---"}</span>
+            </div>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 flex-1 overflow-hidden">
           {/* Settings Sidebar */}
-          <div className="space-y-6 lg:border-r lg:border-white/10 lg:pr-6">
+          <div className="space-y-6 lg:border-r lg:border-white/10 lg:pr-6 overflow-y-auto">
+            
+            <div className="space-y-4">
+               <label className="text-sm font-semibold flex items-center gap-2">
+                <Bot className="w-4 h-4 text-muted-foreground" /> Provider
+              </label>
+              <select 
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-primary outline-none transition-all text-sm"
+              >
+                {providers.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+
             <div className="space-y-4">
               <label className="text-sm font-semibold flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-primary" /> Model Selection
+                <Cpu className="w-4 h-4 text-primary" /> Model
               </label>
               <select 
                 value={selectedModel}
                 onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-primary outline-none transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-primary outline-none transition-all text-sm"
               >
-                {models.map(m => <option key={m.id} value={m.slug}>{m.name}</option>)}
+                {filteredModels.map(m => (
+                    <option key={m.id} value={m.slug}>
+                        {m.name} (${m.mappings?.[0]?.input_token_cost}/1M)
+                    </option>
+                ))}
               </select>
+              <p className="text-[10px] text-muted-foreground">
+                Pricing is per 1M input tokens.
+              </p>
             </div>
 
             <div className="space-y-4">
@@ -171,12 +263,17 @@ export const PlaygroundPage: React.FC = () => {
               </label>
               <input 
                 type="password"
-                placeholder="Enter raw sk-or-v1-..."
+                placeholder="sk-or-v1-..."
                 value={selectedKey}
                 onChange={(e) => setSelectedKey(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm font-mono"
               />
-              <p className="text-[10px] text-muted-foreground italic">Paste your generated key here for current session.</p>
+              <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-[10px] text-yellow-200/80 leading-relaxed flex gap-2">
+                <AlertCircle className="w-3 h-3 shrink-0 translate-y-0.5" />
+                <p>
+                  This Key must be generated by HimmiRouter (Control Plane). Do NOT use your OpenAI/Anthropic keys here.
+                </p>
+              </div>
             </div>
 
             <button 
@@ -185,6 +282,20 @@ export const PlaygroundPage: React.FC = () => {
             >
               <Trash2 className="w-4 h-4" /> Clear Chat
             </button>
+            
+            <div className="mt-8 pt-6 border-t border-white/10">
+                <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">SDK Usage</h4>
+                <div className="bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[10px] text-muted-foreground overflow-x-auto">
+                    <span className="text-purple-400">import</span> openai<br/>
+                    <br/>
+                    client = openai.OpenAI(<br/>
+                    &nbsp;&nbsp;base_url=<span className="text-green-400">"http://localhost:4000/v1"</span>,<br/>
+                    &nbsp;&nbsp;api_key=<span className="text-green-400">"{selectedKey || 'YOUR_KEY'}"</span><br/>
+                    )<br/>
+                    <br/>
+                    check = client.models.list()
+                </div>
+            </div>
           </div>
 
           {/* Chat Interface */}

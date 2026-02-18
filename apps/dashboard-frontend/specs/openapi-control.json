@@ -185,7 +185,13 @@
                         "description": "Successful Response",
                         "content": {
                             "application/json": {
-                                "schema": {}
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ModelResponse"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List Models Models Get"
+                                }
                             }
                         }
                     }
@@ -250,6 +256,24 @@
                 ],
                 "title": "AuthRequest"
             },
+            "CompanyResponse": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "website": {
+                        "type": "string",
+                        "title": "Website"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "website"
+                ],
+                "title": "CompanyResponse"
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -262,6 +286,65 @@
                 },
                 "type": "object",
                 "title": "HTTPValidationError"
+            },
+            "MappingResponse": {
+                "properties": {
+                    "input_token_cost": {
+                        "type": "number",
+                        "title": "Input Token Cost"
+                    },
+                    "output_token_cost": {
+                        "type": "number",
+                        "title": "Output Token Cost"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "input_token_cost",
+                    "output_token_cost"
+                ],
+                "title": "MappingResponse"
+            },
+            "ModelResponse": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "slug": {
+                        "type": "string",
+                        "title": "Slug"
+                    },
+                    "company": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/CompanyResponse"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "mappings": {
+                        "items": {
+                            "$ref": "#/components/schemas/MappingResponse"
+                        },
+                        "type": "array",
+                        "title": "Mappings",
+                        "default": []
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "name",
+                    "slug"
+                ],
+                "title": "ModelResponse"
             },
             "ValidationError": {
                 "properties": {

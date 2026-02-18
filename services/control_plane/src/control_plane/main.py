@@ -57,7 +57,7 @@ async def register(req: AuthRequest, session: AsyncSession = Depends(get_session
     new_user = User(
         email=req.email,
         hashed_password=hash_password(req.password),
-        credits=1000,
+        credits=5.0,  # $5.00 free trial
     )
     session.add(new_user)
     await session.commit()

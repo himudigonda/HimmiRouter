@@ -72,43 +72,51 @@ async def seed_data():
 
                 # 3. Create Models
                 # (Company, Name, Slug, InputCost, OutputCost, ProviderKey)
+                # Costs are in USD per 1M tokens
                 models_to_seed = [
                     # OpenAI
-                    (openai_co, "GPT-4o", "gpt-4o", 5, 15, "openai"),
-                    (openai_co, "GPT-4o Mini", "gpt-4o-mini", 0.15, 0.6, "openai"),
-                    (openai_co, "o1-preview", "o1-preview", 15, 60, "openai"),
+                    # GPT-4o: $2.50 in, $10.00 out
+                    (openai_co, "GPT-4o", "gpt-4o", 2.50, 10.00, "openai"),
+                    # GPT-4o Mini: $0.15 in, $0.60 out
+                    (openai_co, "GPT-4o Mini", "gpt-4o-mini", 0.15, 0.60, "openai"),
+                    # o1-preview: $15.00 in, $60.00 out
+                    (openai_co, "o1-preview", "o1-preview", 15.00, 60.00, "openai"),
                     # Anthropic
+                    # Claude 3.5 Sonnet: $3.00 in, $15.00 out
                     (
                         anthropic_co,
                         "Claude 3.5 Sonnet",
                         "claude-3-5-sonnet-20240620",
-                        3,
-                        15,
+                        3.00,
+                        15.00,
                         "anthropic",
                     ),
+                    # Claude 3 Opus: $15.00 in, $75.00 out
                     (
                         anthropic_co,
                         "Claude 3 Opus",
                         "claude-3-opus-20240229",
-                        15,
-                        75,
+                        15.00,
+                        75.00,
                         "anthropic",
                     ),
                     # Google
+                    # Gemini 1.5 Pro: $1.25 in, $5.00 out (approx <128k context)
                     (
                         google_co,
                         "Gemini 1.5 Pro",
                         "gemini-1.5-pro",
-                        3.5,
-                        10.5,
+                        1.25,
+                        5.00,
                         "google",
                     ),
+                    # Gemini 1.5 Flash: $0.075 in, $0.30 out
                     (
                         google_co,
                         "Gemini 1.5 Flash",
                         "gemini-1.5-flash",
-                        0.35,
-                        1.05,
+                        0.075,
+                        0.30,
                         "google",
                     ),
                     # Groq (Ultra-fast Llama)

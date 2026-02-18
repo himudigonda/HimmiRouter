@@ -174,10 +174,11 @@ async def _execute_billing(
     user_id, api_key_id, prompt_tokens, completion_tokens, costs
 ):
     """Executes the atomic credit deduction in the DB."""
-    # Calculate total cost (units)
-    total_cost = (
-        (prompt_tokens * costs["input"]) + (completion_tokens * costs["output"])
-    ) // 10
+    # Calculate total cost in USD
+    # costs['input'] and costs['output'] are in USD per 1M tokens
+    input_cost = (prompt_tokens / 1_000_000.0) * costs["input"]
+    output_cost = (completion_tokens / 1_000_000.0) * costs["output"]
+    total_cost = input_cost + output_cost
 
     async with AsyncSession(engine, expire_on_commit=False) as session:
         # Lock the user row for atomic update
