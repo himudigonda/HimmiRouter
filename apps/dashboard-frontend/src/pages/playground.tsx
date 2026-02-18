@@ -27,7 +27,15 @@ export const PlaygroundPage: React.FC = () => {
         setModels(modelsData)
         setCredits(userData.credits)
         
-        if (modelsData.length > 0) setSelectedModel(modelsData[0].slug)
+        // Check for model in URL query params
+        const params = new URLSearchParams(window.location.search)
+        const modelParam = params.get("model")
+
+        if (modelParam && modelsData.some((m: any) => m.slug === modelParam)) {
+          setSelectedModel(modelParam)
+        } else if (modelsData.length > 0) {
+          setSelectedModel(modelsData[0].slug)
+        }
       } catch (err) {
         console.error("Failed to fetch playground data", err)
       }

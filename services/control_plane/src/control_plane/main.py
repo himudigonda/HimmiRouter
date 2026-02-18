@@ -92,9 +92,35 @@ async def list_api_keys(user_id: int, session: AsyncSession = Depends(get_sessio
     return res.scalars().all()
 
 
-@app.get("/models")
+from typing import List, Optional
+
+from pydantic import BaseModel
+from sqlalchemy.orm import selectinload
+
+
+class CompanyResponse(BaseModel):
+    name: str
+    website: str
+
+
+class MappingResponse(BaseModel):
+    input_token_cost: float
+    output_token_cost: float
+
+
+class ModelResponse(BaseModel):
+    id: int
+    name: str
+    slug: str
+    company: Optional[CompanyResponse] = None
+    mappings: List[MappingResponse] = []
+
+
+@app.get("/models", response_model=List[ModelResponse])
 async def list_models(session: AsyncSession = Depends(get_session)):
-    stmt = select(Model)
+    stmt = select(Model).options(
+        selectinload(Model.company), selectinload(Model.mappings)
+    )
     res = await session.execute(stmt)
     return res.scalars().all()
 

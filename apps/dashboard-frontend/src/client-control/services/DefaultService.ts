@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 import type { AuthRequest } from '../models/AuthRequest';
+import type { ModelResponse } from '../models/ModelResponse';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -101,10 +102,10 @@ export class DefaultService {
     }
     /**
      * List Models
-     * @returns any Successful Response
+     * @returns ModelResponse Successful Response
      * @throws ApiError
      */
-    public static listModelsModelsGet(): CancelablePromise<any> {
+    public static listModelsModelsGet(): CancelablePromise<Array<ModelResponse>> {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/models',
