@@ -1,6 +1,7 @@
 from database.models import ApiKey, User
 from database.session import get_session
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from shared.auth_utils import hash_password
 from shared.instrumentation import instrument_app
 from shared.security import generate_api_key
@@ -8,6 +9,14 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 app = FastAPI(title="OpenRouter Control Plane")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 instrument_app(app, "control-plane")
 
