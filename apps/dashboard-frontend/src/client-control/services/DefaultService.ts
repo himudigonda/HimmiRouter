@@ -199,4 +199,37 @@ export class DefaultService {
             },
         });
     }
+    /**
+     * Get Usage Stats
+     * Returns real token usage over the last 7 days for the chart.
+     * @param userId
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getUsageStatsAnalyticsUsageGet(
+        userId: number,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/analytics/usage',
+            query: {
+                'user_id': userId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Get Provider Health
+     * The 'Weather Map' API.
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getProviderHealthAnalyticsHealthGet(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/analytics/health',
+        });
+    }
 }

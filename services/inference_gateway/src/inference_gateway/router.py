@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import time
 from datetime import datetime, timezone
 from typing import AsyncGenerator, List, Optional, TypedDict
 
@@ -9,6 +10,7 @@ from database.models import (
     ApiKey,
     Model,
     ModelProviderMapping,
+    Organization,
     Provider,
     User,
     UserProviderKey,
@@ -16,6 +18,7 @@ from database.models import (
 from database.session import engine
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from sqlmodel import select
 
 
@@ -29,8 +32,13 @@ class GatewayState(TypedDict):
     # Internal State
     user_id: Optional[int]
     api_key_id: Optional[int]
+    org_id: Optional[int]
     provider_info: Optional[dict]
     costs: Optional[dict]  # input_token_cost, output_token_cost
+    start_time: float
+    latency_ms: int
+    shadow_model_slug: Optional[str]
+    shadow_response: Optional[str]
 
     # Outputs
     response_content: Optional[str]
@@ -57,32 +65,50 @@ LITELLM_PROVIDER_MAP = {
 # --- NODES ---
 
 
+@trace_node("init")
+async def init_node(state: GatewayState):
+    return {"start_time": time.time()}
+
+
 @trace_node("auth")
 async def auth_node(state: GatewayState):
-    """Verifies the API key and checks user credit balance."""
+    """Verifies the API key and checks organization credit balance."""
     key_hash = hashlib.sha256(state["raw_api_key"].encode()).hexdigest()
 
-    # Use expire_on_commit=False to avoid MissingGreenlet when accessing attributes later
     async with AsyncSession(engine, expire_on_commit=False) as session:
-        # Find Key and User
-        statement = select(ApiKey, User).where(
-            ApiKey.key_hash == key_hash,
-            ApiKey.disabled == False,
-            ApiKey.deleted == False,
-            ApiKey.user_id == User.id,
+        # Find Key -> User -> Organization
+        statement = (
+            select(ApiKey)
+            .where(
+                ApiKey.key_hash == key_hash,
+                ApiKey.disabled == False,
+                ApiKey.deleted == False,
+            )
+            .options(selectinload(ApiKey.user).selectinload(User.organization))
         )
-        result = await session.execute(statement)
-        pair = result.first()
 
-        if not pair:
+        result = await session.execute(statement)
+        api_key_db = result.scalar_one_or_none()
+
+        if not api_key_db:
             return {"error": "Invalid or disabled API Key"}
 
-        api_key_db, user_db = pair
+        user_db = api_key_db.user
+        if not user_db or not user_db.organization:
+            # Should practically not happen with correct data integrity
+            return {"error": "User configuration error (No Organization)"}
 
-        if user_db.credits <= 0:
+        org_db = user_db.organization
+
+        if org_db.credits <= 0:
             return {"error": "Insufficient credits"}
 
-        return {"user_id": user_db.id, "api_key_id": api_key_db.id, "error": None}
+        return {
+            "user_id": user_db.id,
+            "api_key_id": api_key_db.id,
+            "org_id": org_db.id,
+            "error": None,
+        }
 
 
 @trace_node("route")
@@ -124,7 +150,6 @@ async def route_node(state: GatewayState):
             try:
                 user_api_key = decrypt(user_key_entry.encrypted_key)
             except Exception:
-                # If decryption fails, log it and fallback? Or error?
                 pass
 
         # We store the provider details and costs for the billing node
@@ -151,8 +176,8 @@ async def call_llm_node(state: GatewayState):
     import os
 
     if os.getenv("HIMMI_SIMULATOR", "false").lower() == "true":
-        # Simulator Mode for High-Fidelity Demos
-        content = f"Hey there! I'm {state['model_slug']}, running in HimmiRouter Simulator Mode. I don't need real API keys to talk to you right now! How can I help you build the future?"
+        # Simulator Mode
+        content = f"Hey there! I'm {state['model_slug']}, running in HimmiRouter Simulator Mode."
 
         if state.get("stream"):
 
@@ -186,23 +211,17 @@ async def call_llm_node(state: GatewayState):
             }
 
     try:
-        # LiteLLM handles the standardized call
         raw_provider = state["provider_info"]["name"]
-
         provider_name = LITELLM_PROVIDER_MAP.get(raw_provider, raw_provider.lower())
         model_name = state["provider_info"]["model_name"]
-
-        # Get optional BYOK
         user_api_key = state["provider_info"].get("api_key")
-
-        # Determine if we should stream
         stream = state.get("stream", False)
 
         response = await litellm.acompletion(
             model=f"{provider_name}/{model_name}",
             messages=state["messages"],
             stream=stream,
-            api_key=user_api_key,  # None means use env var
+            api_key=user_api_key,
         )
 
         if stream:
@@ -219,24 +238,22 @@ async def call_llm_node(state: GatewayState):
         return {"error": f"LLM Provider Error: {str(e)}"}
 
 
-async def _execute_billing(
-    user_id, api_key_id, prompt_tokens, completion_tokens, costs
-):
+async def _execute_billing(org_id, api_key_id, prompt_tokens, completion_tokens, costs):
     """Executes the atomic credit deduction in the DB."""
-    # Calculate total cost in USD
-    # costs['input'] and costs['output'] are in USD per 1M tokens
     input_cost = (prompt_tokens / 1_000_000.0) * costs["input"]
     output_cost = (completion_tokens / 1_000_000.0) * costs["output"]
     total_cost = input_cost + output_cost
 
     async with AsyncSession(engine, expire_on_commit=False) as session:
-        # Lock the user row for atomic update
-        user_stmt = select(User).where(User.id == user_id).with_for_update()
-        user_res = await session.execute(user_stmt)
-        user = user_res.scalar_one()
+        # Lock the Organization row for atomic update
+        org_stmt = (
+            select(Organization).where(Organization.id == org_id).with_for_update()
+        )
+        org_res = await session.execute(org_stmt)
+        org = org_res.scalar_one()
 
-        # Update user balance
-        user.credits -= total_cost
+        # Update org balance
+        org.credits -= total_cost
 
         # Update API Key stats
         api_key_stmt = select(ApiKey).where(ApiKey.id == api_key_id).with_for_update()
@@ -254,9 +271,6 @@ async def wrap_stream_with_billing(state: GatewayState):
     prompt_tokens = 0
     completion_tokens = 0
 
-    # We can estimate prompt tokens if not returned in usage
-    # For now we rely on LiteLLM's usage reporting in the stream
-
     try:
         async for chunk in state["stream_iterator"]:
             if hasattr(chunk, "usage") and chunk.usage:
@@ -269,12 +283,9 @@ async def wrap_stream_with_billing(state: GatewayState):
                     completion_tokens = getattr(u, "completion_tokens", 0)
             yield chunk
     finally:
-        # This block executes even if the client disconnects or an error occurs
-        # If we didn't get usage from the stream, we might need a fallback estimation
-        # but for Phase 3.5 we assume LiteLLM provides usage.
         if prompt_tokens > 0 or completion_tokens > 0:
             await _execute_billing(
-                state["user_id"],
+                state["org_id"],
                 state["api_key_id"],
                 prompt_tokens,
                 completion_tokens,
@@ -289,7 +300,6 @@ async def billing_node(state: GatewayState):
         return state
 
     if state.get("stream_iterator"):
-        # Wrap the iterator to handle billing on-the-fly/completion
         return {"stream_iterator": wrap_stream_with_billing(state)}
 
     if not state.get("usage"):
@@ -299,7 +309,7 @@ async def billing_node(state: GatewayState):
     costs = state["costs"]
 
     await _execute_billing(
-        state["user_id"],
+        state["org_id"],
         state["api_key_id"],
         usage["prompt_tokens"],
         usage["completion_tokens"],
@@ -309,18 +319,34 @@ async def billing_node(state: GatewayState):
     return state
 
 
+@trace_node("logger")
+async def log_node(state: GatewayState):
+    """Prepares data for the RequestLog table."""
+    # This node just calculates latency.
+    # The actual DB write happens in main.py via BackgroundTasks or explicit call.
+    # However, since the user asked for this node to be part of the graph...
+    # If using BackgroundTasks from main.py, main.py needs to read the state.
+    # We simply compute and return here.
+    latency = int((time.time() - state["start_time"]) * 1000)
+    return {"latency_ms": latency}
+
+
 # --- Graph Assembly ---
 workflow = StateGraph(GatewayState)
+workflow.add_node("init", init_node)
 workflow.add_node("auth", auth_node)
 workflow.add_node("route", route_node)
 workflow.add_node("llm", call_llm_node)
 workflow.add_node("billing", billing_node)
+workflow.add_node("log", log_node)
 
-workflow.set_entry_point("auth")
+workflow.set_entry_point("init")
 
+workflow.add_edge("init", "auth")
 workflow.add_edge("auth", "route")
 workflow.add_edge("route", "llm")
 workflow.add_edge("llm", "billing")
-workflow.add_edge("billing", END)
+workflow.add_edge("billing", "log")
+workflow.add_edge("log", END)
 
 gateway_app = workflow.compile()
