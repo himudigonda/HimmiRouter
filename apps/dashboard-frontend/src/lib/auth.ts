@@ -4,9 +4,13 @@ export class AuthService {
   private static AUTH_KEY = "himmi_user"
 
   static async register(email: string, password: string) {
-    const user = await ControlService.registerAuthRegisterPost(email, password)
-    
-    // Auto-login after registration
+    const user = await ControlService.registerAuthRegisterPost({ email, password })
+    this.setSession(user)
+    return user
+  }
+
+  static async login(email: string, password: string) {
+    const user = await ControlService.loginAuthLoginPost({ email, password })
     this.setSession(user)
     return user
   }

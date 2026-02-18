@@ -12,20 +12,25 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
+  const [mode, setMode] = useState<"login" | "register">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
     try {
-      await AuthService.register(email, password)
+      if (mode === "register") {
+        await AuthService.register(email, password)
+      } else {
+        await AuthService.login(email, password)
+      }
       onSuccess()
     } catch (err: any) {
-      setError(err.message || "Registration failed")
+      setError(err.body?.detail || err.message || "Authentication failed")
     } finally {
       setIsLoading(false)
     }
@@ -49,12 +54,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 H
               </div>
             </div>
-            <CardTitle className="text-2xl text-center font-bold tracking-tight">Create an account</CardTitle>
+            <CardTitle className="text-2xl text-center font-bold tracking-tight">
+              {mode === "login" ? "Welcome back" : "Create an account"}
+            </CardTitle>
             <CardDescription className="text-center">
-              Welcome to the future of LLM Routing.
+              {mode === "login" 
+                ? "Enter your credentials to access the workbench." 
+                : "Welcome to the future of LLM Routing."
+              }
             </CardDescription>
           </CardHeader>
-          <form onSubmit={handleRegister}>
+          <form onSubmit={handleAuth}>
             <CardContent className="grid gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
@@ -81,14 +91,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </div>
               {error && <p className="text-sm text-destructive font-medium text-center">{error}</p>}
             </CardContent>
-            <CardFooter>
+            <CardFooter className="flex flex-col gap-4">
               <Button 
                 type="submit" 
                 className="w-full h-11 glow-emerald" 
                 disabled={isLoading}
               >
-                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Initialize Gateway"}
+                {isLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  mode === "login" ? "Login" : "Initialize Gateway"
+                )}
               </Button>
+              
+              <button
+                type="button"
+                onClick={() => setMode(mode === "login" ? "register" : "login")}
+                className="text-sm text-muted-foreground hover:text-primary transition-colors mt-2"
+              >
+                {mode === "login" 
+                  ? "Don't have an account? Sign up" 
+                  : "Already have an account? Login"
+                }
+              </button>
             </CardFooter>
           </form>
         </Card>

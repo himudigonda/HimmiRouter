@@ -2,7 +2,7 @@ from database.models import ApiKey, Company, Model, User
 from database.session import get_session
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from shared.auth_utils import hash_password
+from shared.auth_utils import hash_password, verify_password
 from shared.instrumentation import instrument_app
 from shared.security import generate_api_key
 from sqlmodel import select
@@ -26,18 +26,37 @@ async def health():
     return {"status": "healthy"}
 
 
+from pydantic import BaseModel
+
+
+class AuthRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/auth/login")
+async def login(req: AuthRequest, session: AsyncSession = Depends(get_session)):
+    stmt = select(User).where(User.email == req.email)
+    res = await session.execute(stmt)
+    user = res.scalar_one_or_none()
+
+    if not user or not verify_password(req.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {"id": user.id, "email": user.email, "credits": user.credits}
+
+
 @app.post("/auth/register")
-async def register(
-    email: str, password: str, session: AsyncSession = Depends(get_session)
-):
+async def register(req: AuthRequest, session: AsyncSession = Depends(get_session)):
     # Simple check if user exists
-    existing = await session.execute(select(User).where(User.email == email))
-    if existing.first():
+    stmt = select(User).where(User.email == req.email)
+    existing = await session.execute(stmt)
+    if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
 
     new_user = User(
-        email=email,
-        hashed_password=hash_password(password),
+        email=req.email,
+        hashed_password=hash_password(req.password),
         credits=1000,
     )
     session.add(new_user)

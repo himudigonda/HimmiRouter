@@ -2,6 +2,7 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
+import type { AuthRequest } from '../models/AuthRequest';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -18,23 +19,38 @@ export class DefaultService {
         });
     }
     /**
+     * Login
+     * @param requestBody
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static loginAuthLoginPost(
+        requestBody: AuthRequest,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/auth/login',
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
      * Register
-     * @param email
-     * @param password
+     * @param requestBody
      * @returns any Successful Response
      * @throws ApiError
      */
     public static registerAuthRegisterPost(
-        email: string,
-        password: string,
+        requestBody: AuthRequest,
     ): CancelablePromise<any> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/auth/register',
-            query: {
-                'email': email,
-                'password': password,
-            },
+            body: requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: `Validation Error`,
             },

@@ -19,7 +19,7 @@ export const DashboardLayout: React.FC<LayoutProps> = ({ children }) => {
 
   const handleLogout = () => {
     AuthService.logout()
-    window.location.href = "/login"
+    window.location.href = "/"
   }
 
   return (

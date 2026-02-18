@@ -7,6 +7,7 @@ export { CancelablePromise, CancelError } from './core/CancelablePromise';
 export { OpenAPI } from './core/OpenAPI';
 export type { OpenAPIConfig } from './core/OpenAPI';
 
+export type { AuthRequest } from './models/AuthRequest';
 export type { HTTPValidationError } from './models/HTTPValidationError';
 export type { ValidationError } from './models/ValidationError';
 
