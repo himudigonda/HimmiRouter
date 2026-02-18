@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 from datetime import datetime, timezone
-from typing import List, Optional, TypedDict
+from typing import AsyncGenerator, List, Optional, TypedDict
 
 import litellm
 from database.models import ApiKey, Model, ModelProviderMapping, Provider, User
@@ -16,6 +16,7 @@ class GatewayState(TypedDict):
     raw_api_key: str
     model_slug: str
     messages: List[dict]
+    stream: bool
 
     # Internal State
     user_id: Optional[int]
@@ -25,13 +26,17 @@ class GatewayState(TypedDict):
 
     # Outputs
     response_content: Optional[str]
+    stream_iterator: Optional[AsyncGenerator]
     usage: Optional[dict]
     error: Optional[str]
 
 
+from shared.instrumentation import trace_node
+
 # --- NODES ---
 
 
+@trace_node("auth")
 async def auth_node(state: GatewayState):
     """Verifies the API key and checks user credit balance."""
     key_hash = hashlib.sha256(state["raw_api_key"].encode()).hexdigest()
@@ -59,6 +64,7 @@ async def auth_node(state: GatewayState):
         return {"user_id": user_db.id, "api_key_id": api_key_db.id, "error": None}
 
 
+@trace_node("route")
 async def route_node(state: GatewayState):
     """Finds the model costs and the specific provider to use."""
     if state.get("error"):
@@ -93,6 +99,7 @@ async def route_node(state: GatewayState):
         }
 
 
+@trace_node("llm")
 async def call_llm_node(state: GatewayState):
     """Proxies the request to the upstream provider via LiteLLM."""
     if state.get("error"):
@@ -103,38 +110,41 @@ async def call_llm_node(state: GatewayState):
         provider_name = state["provider_info"]["name"].lower()
         model_name = state["provider_info"]["model_name"]
 
+        # Determine if we should stream
+        stream = state.get("stream", False)
+
         response = await litellm.acompletion(
-            model=f"{provider_name}/{model_name}", messages=state["messages"]
+            model=f"{provider_name}/{model_name}",
+            messages=state["messages"],
+            stream=stream,
         )
 
-        return {
-            "response_content": response.choices[0].message.content,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-            },
-        }
+        if stream:
+            return {"stream_iterator": response}
+        else:
+            return {
+                "response_content": response.choices[0].message.content,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                },
+            }
     except Exception as e:
         return {"error": f"LLM Provider Error: {str(e)}"}
 
 
-async def billing_node(state: GatewayState):
-    """Deducts credits using Row-Level Locking (Atomic)."""
-    if state.get("error") or not state.get("usage"):
-        return state
-
-    usage = state["usage"]
-    costs = state["costs"]
-
+async def _execute_billing(
+    user_id, api_key_id, prompt_tokens, completion_tokens, costs
+):
+    """Executes the atomic credit deduction in the DB."""
     # Calculate total cost (units)
     total_cost = (
-        (usage["prompt_tokens"] * costs["input"])
-        + (usage["completion_tokens"] * costs["output"])
+        (prompt_tokens * costs["input"]) + (completion_tokens * costs["output"])
     ) // 10
 
     async with AsyncSession(engine, expire_on_commit=False) as session:
         # Lock the user row for atomic update
-        user_stmt = select(User).where(User.id == state["user_id"]).with_for_update()
+        user_stmt = select(User).where(User.id == user_id).with_for_update()
         user_res = await session.execute(user_stmt)
         user = user_res.scalar_one()
 
@@ -142,9 +152,7 @@ async def billing_node(state: GatewayState):
         user.credits -= total_cost
 
         # Update API Key stats
-        api_key_stmt = (
-            select(ApiKey).where(ApiKey.id == state["api_key_id"]).with_for_update()
-        )
+        api_key_stmt = select(ApiKey).where(ApiKey.id == api_key_id).with_for_update()
         api_key_res = await session.execute(api_key_stmt)
         api_key = api_key_res.scalar_one()
 
@@ -152,6 +160,64 @@ async def billing_node(state: GatewayState):
         api_key.last_used = datetime.now(timezone.utc).replace(tzinfo=None)
 
         await session.commit()
+
+
+async def wrap_stream_with_billing(state: GatewayState):
+    """Wraps the stream iterator to track usage and deduct credits on completion."""
+    prompt_tokens = 0
+    completion_tokens = 0
+
+    # We can estimate prompt tokens if not returned in usage
+    # For now we rely on LiteLLM's usage reporting in the stream
+
+    try:
+        async for chunk in state["stream_iterator"]:
+            if hasattr(chunk, "usage") and chunk.usage:
+                u = chunk.usage
+                if isinstance(u, dict):
+                    prompt_tokens = u.get("prompt_tokens", 0)
+                    completion_tokens = u.get("completion_tokens", 0)
+                else:
+                    prompt_tokens = getattr(u, "prompt_tokens", 0)
+                    completion_tokens = getattr(u, "completion_tokens", 0)
+            yield chunk
+    finally:
+        # This block executes even if the client disconnects or an error occurs
+        # If we didn't get usage from the stream, we might need a fallback estimation
+        # but for Phase 3.5 we assume LiteLLM provides usage.
+        if prompt_tokens > 0 or completion_tokens > 0:
+            await _execute_billing(
+                state["user_id"],
+                state["api_key_id"],
+                prompt_tokens,
+                completion_tokens,
+                state["costs"],
+            )
+
+
+@trace_node("billing")
+async def billing_node(state: GatewayState):
+    """Deducts credits using Row-Level Locking (Atomic)."""
+    if state.get("error"):
+        return state
+
+    if state.get("stream_iterator"):
+        # Wrap the iterator to handle billing on-the-fly/completion
+        return {"stream_iterator": wrap_stream_with_billing(state)}
+
+    if not state.get("usage"):
+        return state
+
+    usage = state["usage"]
+    costs = state["costs"]
+
+    await _execute_billing(
+        state["user_id"],
+        state["api_key_id"],
+        usage["prompt_tokens"],
+        usage["completion_tokens"],
+        costs,
+    )
 
     return state
 
