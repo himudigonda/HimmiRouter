@@ -239,9 +239,10 @@ async def get_usage_stats(user_id: int, session: AsyncSession = Depends(get_sess
     """Returns real token usage over the last 7 days for the chart."""
     # Query logs grouped by day
     # Note: RequestLog.timestamp is datetime
+    date_trunc_expr = func.date_trunc("day", RequestLog.timestamp)
     stmt = (
         select(
-            func.date_trunc("day", RequestLog.timestamp).label("date"),
+            date_trunc_expr.label("date"),
             func.sum(RequestLog.prompt_tokens + RequestLog.completion_tokens).label(
                 "tokens"
             ),
@@ -249,18 +250,18 @@ async def get_usage_stats(user_id: int, session: AsyncSession = Depends(get_sess
             func.count(RequestLog.id).label("count"),
         )
         .where(RequestLog.user_id == user_id)
-        .group_by(func.date_trunc("day", RequestLog.timestamp))
-        .order_by(func.date_trunc("day", RequestLog.timestamp))
+        .group_by(date_trunc_expr)
+        .order_by(date_trunc_expr)
     )
     res = await session.execute(stmt)
     rows = res.all()
 
     return [
         {
-            "date": r.date.strftime("%Y-%m-%d"),
-            "tokens": r.tokens,
-            "cost": r.cost,
-            "count": r.count,
+            "date": r.date.strftime("%Y-%m-%d") if r.date else None,
+            "tokens": r.tokens or 0,
+            "cost": r.cost or 0.0,
+            "count": r.count or 0,
         }
         for r in rows
     ]

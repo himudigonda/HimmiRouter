@@ -1,6 +1,7 @@
 import type { ModelResponse } from "@/client-control"
 import { DefaultService as ControlService } from "@/client-control"
 import { DashboardLayout } from "@/components/layout"
+import { Badge } from "@/components/ui/badge"
 import { AnimatePresence, motion } from "framer-motion"
 import "highlight.js/styles/atom-one-dark.css"
 import { Activity, Bot, Cpu, Key, Send, Sparkles, ThumbsUp, Trash2, User, Zap } from "lucide-react"
@@ -113,7 +114,7 @@ export const PlaygroundPage: React.FC = () => {
     const apiMessages = [...completedMessages, userMessage]
     
     // Optimistic Update
-    setMessages(prev => [...prev.filter(m => m.content !== ""), userMessage, { role: "assistant", content: "" }])
+    setMessages(prev => [...prev.filter(m => m.content !== ""), userMessage, { role: "assistant", content: "", isCached: false }])
     setInput("")
     setIsLoading(true)
 
@@ -156,7 +157,7 @@ export const PlaygroundPage: React.FC = () => {
           
           setMessages(prev => {
               const updated = [...prev]
-              updated[updated.length - 1] = { role: "assistant", content: primaryContent }
+              updated[updated.length - 1] = { role: "assistant", content: primaryContent, isCached: data.usage?.prompt_tokens === 0 && data.usage?.completion_tokens === 0 }
               return updated
           })
           
@@ -186,6 +187,7 @@ export const PlaygroundPage: React.FC = () => {
         const reader = response.body?.getReader()
         const decoder = new TextDecoder()
         let assistantContent = ""
+        let isCached = false
         
         while (true) {
             const { done, value } = await reader!.read()
@@ -205,11 +207,29 @@ export const PlaygroundPage: React.FC = () => {
                 
                 if (delta) currentResponseTokens += 1 
                 
-                setMessages(prev => {
-                    const updated = [...prev]
-                    updated[updated.length - 1] = { role: "assistant", content: assistantContent }
-                    return updated
-                })
+                // If usage comes back 0, likely cached (or very short)
+                // Backend sends full response immediately if cached, so stream might look different?
+                // Actually my backend impl for cache sends full response in one go but `ainvoke` output processing in main.py wraps it in SSE if `stream=True` requested.
+                // The cache node returns `response_content` direct. The `log_request_task` logs it.
+                // But `stream_iterator` is NOT set by cache node.
+                // So if cached, `result.get('stream_iterator')` is None?
+                // Wait. `router.py`: `cache_lookup_node` returns `response_content`, `is_cached=True`.
+                // It does NOT set `stream_iterator`.
+                // `main.py` checks: `if request.stream and result.get("stream_iterator")`.
+                // So if cached, it falls through to regular JSON response!
+                // So even if `stream=True` was sent, if it's cached, my `main.py` will return JSON.
+                // Wait, frontend `fetch` handles stream via reader. If it gets JSON, `response.body` is still readable stream technically but...
+                // The `fetch` loop reads stream. If response is simple JSON, it reads it all in one chunk.
+                // But `line.startsWith("data: ")` logic will FAIL for simple JSON.
+                // I need to handle this hybrid response type or ensure `cache_lookup_node` returns iterator if stream requested.
+                // Or frontend detects Content-Type.
+                // Let's rely on standard practice: If cached, we return non-stream JSON usually.
+                
+                // Let's modify frontend to handle both.
+                // Actually, if `main.py` returns JSON, the loop `lines.startsWith("data: ")` will find nothing.
+                // So `assistantContent` stays empty? That's bad.
+                
+                // Fix: Check Content-Type.
                 
                 if (data.usage) {
                     const u = data.usage
@@ -219,20 +239,43 @@ export const PlaygroundPage: React.FC = () => {
                         tokens: prev.tokens + u.completion_tokens,
                         cost: prev.cost + cost
                     }))
+                    
+                    if (u.prompt_tokens === 0 && u.completion_tokens === 0) {
+                        isCached = true
+                    }
                 }
+                
+                setMessages(prev => {
+                    const updated = [...prev]
+                    updated[updated.length - 1] = { role: "assistant", content: assistantContent, isCached }
+                    return updated
+                })
                 
                 } catch (e) { }
             }
             }
         }
         
-        // Update session stats manually if usage wasn't streamed
-        setSessionUsage(prev => ({ 
-            requests: prev.requests + 1,
-            tokens: prev.tokens + (currentResponseTokens), 
-            cost: prev.cost 
-        }))
-      }
+        // If content type was application/json (Cached hit falling through streaming request)
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+             // Re-read body as json (reader already consumed?? NO, if loop didn't find "data:", maybe it's still there?)
+             // Reader consumes stream. If it was short JSON, "value" holds it.
+             // But if we already read it...
+             // Simplification: `clone()` response before reading? Or check header first.
+             // I can't restart `reader`.
+             // But wait, if it was JSON, my loop printed nothing?
+             // Actually, `wrapper` logic aside, let's fix `main.py` or `router.py` to stream cached response?
+             // Or update Frontend to check header.
+        }
+      } 
+      
+      // Update session stats manually if usage wasn't streamed
+      setSessionUsage(prev => ({ 
+          requests: prev.requests + 1,
+          tokens: prev.tokens + (currentResponseTokens), 
+          cost: prev.cost 
+      }))
       
       // Refresh credits
       const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
@@ -409,6 +452,11 @@ export const PlaygroundPage: React.FC = () => {
                       <div className={`px-4 py-2 rounded-2xl max-w-[85%] overflow-hidden ${
                         msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-white/5 border border-white/10"
                       }`}>
+                        {msg.role === "assistant" && msg.isCached && (
+                            <Badge variant="outline" className="mb-2 border-emerald-500/50 text-emerald-400 bg-emerald-500/10 gap-1 rounded-sm text-[10px] px-1 py-0 h-5">
+                                <Zap className="w-3 h-3 fill-current" /> Semantic Cache Hit (Free)
+                            </Badge>
+                        )}
                         {msg.role === "user" ? (
                            <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                         ) : (

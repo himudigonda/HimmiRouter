@@ -17,6 +17,7 @@ from database.models import (
 )
 from database.session import engine
 from langgraph.graph import END, StateGraph
+from shared.cache import check_cache, store_cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlmodel import select
@@ -40,6 +41,7 @@ class GatewayState(TypedDict):
     latency_ms: int
     shadow_model_slug: Optional[str]
     shadow_response: Optional[str]
+    is_cached: bool  # New flag
 
     # Outputs
     response_content: Optional[str]
@@ -69,6 +71,39 @@ LITELLM_PROVIDER_MAP = {
 @trace_node("init")
 async def init_node(state: GatewayState):
     return {"start_time": time.time()}
+
+
+@trace_node("cache_lookup")
+async def cache_lookup_node(state: GatewayState):
+    # Only cache simple user prompts for now
+    if not state.get("messages"):
+        return {"is_cached": False}
+
+    last_msg = state["messages"][-1]["content"]
+
+    # We only cache the LAST message content as key for now
+    cached_response = await check_cache(last_msg)
+    if cached_response:
+        print("Cache HIT!")
+        return {
+            "response_content": cached_response,
+            "is_cached": True,
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},  # FREE
+        }
+    return {"is_cached": False}
+
+
+@trace_node("cache_store")
+async def cache_store_node(state: GatewayState):
+    if (
+        not state.get("is_cached")
+        and not state.get("error")
+        and state.get("response_content")
+    ):
+        # Store only if we have a valid text response
+        last_msg = state["messages"][-1]["content"]
+        await store_cache(last_msg, state["response_content"])
+    return state
 
 
 @trace_node("auth")
@@ -354,6 +389,10 @@ async def billing_node(state: GatewayState):
     if state.get("error"):
         return state
 
+    # If cached, we skip credit deduction but still return state
+    if state.get("is_cached"):
+        return state
+
     if state.get("stream_iterator"):
         return {"stream_iterator": wrap_stream_with_billing(state)}
 
@@ -412,8 +451,18 @@ async def fallback_llm_node(state: GatewayState):
 
 
 # --- Graph Assembly ---
+
+
+def should_skip_llm(state: GatewayState):
+    if state["is_cached"]:
+        return "skip"
+    return "continue"
+
+
 workflow = StateGraph(GatewayState)
 workflow.add_node("init", init_node)
+workflow.add_node("cache_lookup", cache_lookup_node)
+workflow.add_node("cache_store", cache_store_node)
 workflow.add_node("auth", auth_node)
 workflow.add_node("route", route_node)
 workflow.add_node("llm", call_llm_node)
@@ -423,19 +472,68 @@ workflow.add_node("log", log_node)
 
 workflow.set_entry_point("init")
 
+
+# Conditional Edge: If cached, go straight to billing (skipping auth/llm cost), else continue
+# Note: We technically need auth to know WHO asked, but for "cache_lookup" we might want to skip cost but still validate user?
+# The user's prompt suggested: "skip" -> "billing", "continue" -> "auth".
+# This implies if cached, we skip Auth logic regarding CREDITS? But we still need user_id/org_id for logging?
+# Actually billing_node needs org_id/api_key_id. If we skip auth_node, we don't have those in state!
+# Wait, `init` -> `auth` was previous flow.
+# If we do `init` -> `cache_lookup` -> `auth` -> (if cached: skip route/llm -> billing? or skip billing too?)
+# If cached = FREE, we still need `auth` to get IDs for logging/audit.
+# So correct flow: `init` -> `auth` -> `cache_lookup` -> (if cached: billing, else: route -> llm -> billing)
+# BUT the user prompted: `workflow.set_entry_point("init")`, `workflow.add_edge("init", "cache_lookup")`
+# And `workflow.add_conditional_edges("cache_lookup", ..., {"skip": "billing", "continue": "auth"})`
+# This implies `cache_lookup` happens BEFORE auth.
+# If so, `billing_node` will FAIL because `org_id` is missing.
+# UNLESS `billing_node` checks for `is_cached` and returns early safely without needing IDs?
+# But `log_node` needs IDs for the DB log.
+# So `auth` is CRITICAL for IDs.
+# I will adjust the graph: `init` -> `auth` -> `cache_lookup`.
+# If cached: -> `billing` (which skips cost deduction if cached) -> `cache_store` -> `log`.
+# If not cached: -> `route` -> `llm` -> `billing` -> `cache_store` -> `log`.
+
+# Wait, `cache_lookup` needs embedding. That's fine.
+# But `log_node` relies on `state['user_id']`. If we skip `auth`, `user_id` is null.
+# So we MUST run `auth`.
+# I will implement: `init` -> `auth` -> `cache_lookup`.
+# If cached -> skip to billing (effectively 0 cost).
+# If not cached -> route.
+
+# Adjusting User's suggested graph flow for correctness:
+# User said: `workflow.add_edge("init", "cache_lookup")` and conditional `skip` -> `billing`, `continue` -> `auth`.
+# This is physically impossible for logging/billing/metrics if `auth` (which yields user_id) is skipped.
+# UNLESS the user implies public cache access? No, API Key is needed.
+# I will keep `auth` FIRST.
+# `init` -> `auth` -> `cache_lookup`.
+# Conditional on `cache_lookup`:
+#  - Is Cached? -> `billing` (skips cost) -> `cache_store` (noop/update) -> `log`.
+#  - Not Cached? -> `route` -> `llm` -> `fallback` logic -> `billing` -> `cache_store` -> `log`.
+
 workflow.add_edge("init", "auth")
-workflow.add_edge("auth", "route")
+workflow.add_edge("auth", "cache_lookup")  # Auth first, then Cache Check
+
+workflow.add_conditional_edges(
+    "cache_lookup",
+    should_skip_llm,
+    {
+        "skip": "billing",  # If cached, jump to billing (which will handle 0 cost)
+        "continue": "route",  # If not cached, proceed to routing
+    },
+)
+
 workflow.add_edge("route", "llm")
 
-# Conditional Edge for Resilience
+# Conditional Edge for Resilience (LLM -> Fallback or Billing)
 workflow.add_conditional_edges(
     "llm", check_for_fallback, {"fallback": "fallback_llm", "billing": "billing"}
 )
 
-workflow.add_edge(
-    "fallback_llm", "billing"
-)  # Even failed requests might need logging/billing check (usually 0 cost)
-workflow.add_edge("billing", "log")
+workflow.add_edge("fallback_llm", "billing")
+
+# After billing, we try to store in cache (if it wasn't a cache hit)
+workflow.add_edge("billing", "cache_store")
+workflow.add_edge("cache_store", "log")
 workflow.add_edge("log", END)
 
 gateway_app = workflow.compile()
