@@ -9,5 +9,9 @@ dependencies = [
     "uvicorn>=0.27.1",
     "database",  # Local workspace dependency
     "shared",    # Local workspace dependency
-    "fastapi-users[sqlalchemy]>=13.0.0",
 ]
+
+[tool.uv.sources]
+database = { workspace = true }
+shared = { workspace = true }
+
