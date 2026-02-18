@@ -7,7 +7,14 @@ authors = [
     { name = "Himansh Mudigonda", email = "himudigonda@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "sqlmodel>=0.0.22",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.1",
+    "pydantic-settings>=2.2.1",
+    "psycopg2-binary>=2.9.11",
+    "greenlet>=3.3.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.9.27,<0.10.0"]

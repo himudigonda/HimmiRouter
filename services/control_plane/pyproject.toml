@@ -4,4 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.27.1",
+    "database",  # Local workspace dependency
+    "shared",    # Local workspace dependency
+]
+
+[tool.uv.sources]
+database = { workspace = true }
+shared = { workspace = true }
+
