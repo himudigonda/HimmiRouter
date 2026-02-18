@@ -3,6 +3,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import StreamingResponse
+from inference_gateway.mcp_server import mcp
 from inference_gateway.router import gateway_app
 from pydantic import BaseModel
 from shared.instrumentation import instrument_app
@@ -10,6 +11,7 @@ from shared.instrumentation import instrument_app
 app = FastAPI(title="OpenRouter Inference Gateway")
 
 instrument_app(app, "inference-gateway")
+app.mount("/mcp", mcp.sse_app())
 
 
 class ChatMessage(BaseModel):
