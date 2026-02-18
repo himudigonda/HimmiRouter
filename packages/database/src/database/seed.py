@@ -1,7 +1,15 @@
 import asyncio
 
-from database.models import Company, Model, ModelProviderMapping, Provider
+from database.models import (
+    Company,
+    Model,
+    ModelProviderMapping,
+    Organization,
+    Provider,
+    User,
+)
 from database.session import engine
+from shared.auth_utils import hash_password
 from sqlmodel import select
 
 
@@ -275,6 +283,22 @@ async def seed_data():
                             output_token_cost=out_cost,
                         )
                         session.add(mapping)
+
+                # 4. Create Default Test User and Organization
+                test_org = get_or_create(Organization, name="Personal", credits=100.0)
+
+                test_user_mail = "test@example.com"
+                test_user = session.execute(
+                    select(User).where(User.email == test_user_mail)
+                ).scalar_one_or_none()
+
+                if not test_user:
+                    test_user = User(
+                        email=test_user_mail,
+                        hashed_password=hash_password("password"),
+                        organization_id=test_org.id,
+                    )
+                    session.add(test_user)
 
                 session.commit()
 

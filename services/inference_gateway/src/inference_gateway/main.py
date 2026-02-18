@@ -35,6 +35,7 @@ class ChatRequest(BaseModel):
     model: str
     messages: List[ChatMessage]
     stream: Optional[bool] = False
+    shadow_mode: Optional[bool] = False
 
 
 @app.get("/health")
@@ -69,6 +70,7 @@ async def log_request_task(result: dict):
 
         log_entry = RequestLog(
             user_id=user_id,
+            organization_id=result.get("org_id"),
             api_key_id=api_key_id,
             model_slug=result.get("model_slug", "unknown"),
             provider_name=result.get("provider_info", {}).get("name", "unknown"),
@@ -124,6 +126,7 @@ async def chat_completions(
         "model_slug": request.model,
         "messages": [m.model_dump() for m in request.messages],
         "stream": request.stream,
+        "shadow_mode": request.shadow_mode,
     }
 
     result = await gateway_app.ainvoke(inputs)
@@ -142,7 +145,8 @@ async def chat_completions(
             sse_generator(result["stream_iterator"]), media_type="text/event-stream"
         )
 
-    return {
+    # Prepare response, including shadow data if present
+    response_data = {
         "id": "chatcmpl-" + str(result.get("user_id", "unknown")),
         "object": "chat.completion",
         "model": result["model_slug"],
@@ -155,3 +159,9 @@ async def chat_completions(
         ],
         "usage": result["usage"],
     }
+
+    if result.get("shadow_response"):
+        response_data["shadow_model"] = result.get("shadow_model_slug")
+        response_data["shadow_response"] = result.get("shadow_response")
+
+    return response_data

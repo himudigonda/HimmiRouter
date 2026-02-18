@@ -46,7 +46,7 @@ class UserProviderKey(SQLModel, table=True):
 class ApiKey(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
-    organization_id: Optional[int] = Field(default=None, foreign_key="organization.id")
+    organization_id: int = Field(foreign_key="organization.id")  # Key belongs to Org
 
     name: str
     key_hash: str = Field(unique=True, index=True)  # SHA-256
@@ -57,12 +57,15 @@ class ApiKey(SQLModel, table=True):
     last_used: Optional[datetime] = None
 
     user: User = Relationship(back_populates="api_keys")
-    organization: Optional[Organization] = Relationship(back_populates="api_keys")
+    organization: Organization = Relationship(back_populates="api_keys")
 
 
 class RequestLog(SQLModel, table=True):
+    """The Analytics Engine Source."""
+
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
+    organization_id: int = Field(foreign_key="organization.id", index=True)
     api_key_id: int = Field(foreign_key="apikey.id", index=True)
     model_slug: str = Field(index=True)
     provider_name: str
@@ -70,7 +73,7 @@ class RequestLog(SQLModel, table=True):
     completion_tokens: int
     cost: float
     latency_ms: int
-    status_code: int
+    status_code: int = Field(default=200)
     is_cached: bool = Field(default=False)
     timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
 

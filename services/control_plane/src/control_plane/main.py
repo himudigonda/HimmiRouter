@@ -1,5 +1,9 @@
+from typing import List, Optional
+
+from database.encryption import encrypt
 from database.models import (
     ApiKey,
+    EvaluationPair,
     Model,
     Organization,
     RequestLog,
@@ -9,6 +13,7 @@ from database.models import (
 from database.session import get_session
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from shared.auth_utils import hash_password, verify_password
 from shared.instrumentation import instrument_app
 from shared.security import generate_api_key
@@ -34,9 +39,6 @@ async def health():
     return {"status": "healthy"}
 
 
-from pydantic import BaseModel
-
-
 class AuthRequest(BaseModel):
     email: str
     password: str
@@ -57,9 +59,6 @@ async def login(req: AuthRequest, session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.organization:
-        # Should not happen for new users, but legacy might need migration
-        # Auto-heal: create org? No, let's assume migration handles or registration forces it.
-        # Returning 0 credits if no org strictly speaking.
         credits = 0.0
     else:
         credits = user.organization.credits
@@ -130,11 +129,6 @@ async def list_api_keys(user_id: int, session: AsyncSession = Depends(get_sessio
     return res.scalars().all()
 
 
-from typing import List, Optional
-
-from pydantic import BaseModel
-
-
 class CompanyResponse(BaseModel):
     name: str
     website: str
@@ -175,9 +169,6 @@ async def get_user_status(user_id: int, session: AsyncSession = Depends(get_sess
 
     credits = user.organization.credits if user.organization else 0.0
     return {"id": user.id, "email": user.email, "credits": credits}
-
-
-from database.encryption import encrypt
 
 
 class ProviderKeyRequest(BaseModel):
@@ -292,3 +283,33 @@ async def get_provider_health(session: AsyncSession = Depends(get_session)):
         }
         for r in res.all()
     ]
+
+
+# --- PREFERENCE (RLHF) ---
+
+
+class PreferenceRequest(BaseModel):
+    prompt: str
+    primary_model: str
+    primary_response: str
+    shadow_model: str
+    shadow_response: str
+    user_preference: str  # "primary" or "shadow"
+
+
+@app.post("/analytics/preference")
+async def save_user_preference(
+    req: PreferenceRequest, session: AsyncSession = Depends(get_session)
+):
+    """Saves the RLHF data for future model training."""
+    pair = EvaluationPair(
+        prompt=req.prompt,
+        primary_model=req.primary_model,
+        primary_response=req.primary_response,
+        shadow_model=req.shadow_model,
+        shadow_response=req.shadow_response,
+        user_preference=req.user_preference,
+    )
+    session.add(pair)
+    await session.commit()
+    return {"status": "recorded"}

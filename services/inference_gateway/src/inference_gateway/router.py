@@ -28,6 +28,7 @@ class GatewayState(TypedDict):
     model_slug: str
     messages: List[dict]
     stream: bool
+    shadow_mode: Optional[bool]
 
     # Internal State
     user_id: Optional[int]
@@ -216,24 +217,78 @@ async def call_llm_node(state: GatewayState):
         model_name = state["provider_info"]["model_name"]
         user_api_key = state["provider_info"].get("api_key")
         stream = state.get("stream", False)
+        shadow_mode = state.get("shadow_mode", False)
 
-        response = await litellm.acompletion(
+        # Primary Task
+        # If shadow mode is ON, we disable streaming on primary to allow comparison logic more easily for MVP
+        # Or we can support parallel streaming, but collecting shadow response is easier if both are non-stream,
+        # OR we stream primary and await shadow in background.
+        # For simplicity in Step 3, if shadow_mode=True, force stream=False.
+        if shadow_mode:
+            stream = False
+
+        primary_task = litellm.acompletion(
             model=f"{provider_name}/{model_name}",
             messages=state["messages"],
             stream=stream,
             api_key=user_api_key,
         )
 
-        if stream:
-            return {"stream_iterator": response}
+        if not shadow_mode:
+            response = await primary_task
+            if stream:
+                return {"stream_iterator": response}
+            else:
+                return {
+                    "response_content": response.choices[0].message.content,
+                    "usage": {
+                        "prompt_tokens": response.usage.prompt_tokens,
+                        "completion_tokens": response.usage.completion_tokens,
+                    },
+                }
         else:
-            return {
-                "response_content": response.choices[0].message.content,
-                "usage": {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                },
-            }
+            # Shadow Logic
+            # Hardcoded shadow model for MVP: Groq Llama 3 8B (fast & cheap)
+            # In real prod, select from DB configs
+            shadow_provider_model = "groq/llama3-8b-8192"
+
+            # We need a key for Groq if not provided in env. Assume env var GROQ_API_KEY is set or passed.
+            # For this demo, we assume the environment has keys or litellm handles it.
+
+            shadow_task = litellm.acompletion(
+                model=shadow_provider_model, messages=state["messages"], stream=False
+            )
+
+            # Run parallel
+            results = await asyncio.gather(
+                primary_task, shadow_task, return_exceptions=True
+            )
+            primary_res, shadow_res = results
+
+            outputs = {}
+
+            # Handle Primary
+            if isinstance(primary_res, Exception):
+                return {"error": f"Primary Provider Error: {str(primary_res)}"}
+            else:
+                outputs["response_content"] = primary_res.choices[0].message.content
+                outputs["usage"] = {
+                    "prompt_tokens": primary_res.usage.prompt_tokens,
+                    "completion_tokens": primary_res.usage.completion_tokens,
+                }
+
+            # Handle Shadow
+            if isinstance(shadow_res, Exception):
+                # Shadow failure shouldn't fail the request, just log it?
+                # or return None for shadow response
+                outputs["shadow_response"] = f"Shadow Error: {str(shadow_res)}"
+                outputs["shadow_model_slug"] = "error"
+            else:
+                outputs["shadow_response"] = shadow_res.choices[0].message.content
+                outputs["shadow_model_slug"] = shadow_provider_model
+
+            return outputs
+
     except Exception as e:
         return {"error": f"LLM Provider Error: {str(e)}"}
 
@@ -331,12 +386,38 @@ async def log_node(state: GatewayState):
     return {"latency_ms": latency}
 
 
+def check_for_fallback(state: GatewayState):
+    # If the LLM node returned an error, we route to a fallback provider
+    # Basic check: if 'error' key is present and indicates LLM failure
+    if state.get("error") and "LLM Provider Error" in state["error"]:
+        # clear error to allow retry
+        # In a real graph we might want to preserve the original error trace
+        # For now, we return 'fallback' edge
+        return "fallback"
+    return "billing"  # Proceed to billing if success (or if error is not retryable)
+
+
+@trace_node("fallback_llm")
+async def fallback_llm_node(state: GatewayState):
+    """Fallback node that tries a different provider/model."""
+    # Logic to switch model/provider would go here.
+    # For MVP, let's just retry the same one or fail gracefully.
+    # In a full impl, we'd pick the next cheapest provider for the same model.
+    # Example: If OpenAI fails, try Azure OpenAI.
+
+    # For SIMPLICITY in this Step, we will just return the error but with a flag.
+    # Real fallback logic requires mapped backups in DB.
+
+    return {"error": state["error"] + " (Fallback failed too)"}
+
+
 # --- Graph Assembly ---
 workflow = StateGraph(GatewayState)
 workflow.add_node("init", init_node)
 workflow.add_node("auth", auth_node)
 workflow.add_node("route", route_node)
 workflow.add_node("llm", call_llm_node)
+workflow.add_node("fallback_llm", fallback_llm_node)
 workflow.add_node("billing", billing_node)
 workflow.add_node("log", log_node)
 
@@ -345,7 +426,15 @@ workflow.set_entry_point("init")
 workflow.add_edge("init", "auth")
 workflow.add_edge("auth", "route")
 workflow.add_edge("route", "llm")
-workflow.add_edge("llm", "billing")
+
+# Conditional Edge for Resilience
+workflow.add_conditional_edges(
+    "llm", check_for_fallback, {"fallback": "fallback_llm", "billing": "billing"}
+)
+
+workflow.add_edge(
+    "fallback_llm", "billing"
+)  # Even failed requests might need logging/billing check (usually 0 cost)
 workflow.add_edge("billing", "log")
 workflow.add_edge("log", END)
 

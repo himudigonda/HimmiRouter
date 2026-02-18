@@ -3,7 +3,7 @@ import { DefaultService as ControlService } from "@/client-control"
 import { DashboardLayout } from "@/components/layout"
 import { AnimatePresence, motion } from "framer-motion"
 import "highlight.js/styles/atom-one-dark.css"
-import { Activity, AlertCircle, Bot, Cpu, Key, Send, Sparkles, Trash2, User } from "lucide-react"
+import { Activity, Bot, Cpu, Key, Send, Sparkles, ThumbsUp, Trash2, User, Zap } from "lucide-react"
 import React, { useEffect, useRef, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import rehypeHighlight from "rehype-highlight"
@@ -20,7 +20,18 @@ export const PlaygroundPage: React.FC = () => {
   const [selectedProvider, setSelectedProvider] = useState("All")
   const [selectedModel, setSelectedModel] = useState("")
   const [selectedKey, setSelectedKey] = useState("")
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<any[]>([]) // Shared history
+  
+  // Shadow Mode State
+  const [shadowMode, setShadowMode] = useState(false)
+  const [pendingComparison, setPendingComparison] = useState<{
+      prompt: string,
+      primaryModel: string,
+      primaryResponse: string,
+      shadowModel: string,
+      shadowResponse: string
+  } | null>(null)
+
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
@@ -67,7 +78,7 @@ export const PlaygroundPage: React.FC = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [messages])
+  }, [messages, pendingComparison])
 
   // Filter models when provider changes
   useEffect(() => {
@@ -76,10 +87,6 @@ export const PlaygroundPage: React.FC = () => {
     } else {
       setFilteredModels(models.filter(m => m.company?.name === selectedProvider))
     }
-    // Reset selected model if it's no longer in the list
-    /* if (!filteredModels.find(m => m.slug === selectedModel) && filteredModels.length > 0) {
-       setSelectedModel(filteredModels[0].slug)
-    } */
   }, [selectedProvider, models])
   
   // Extract unique providers
@@ -96,11 +103,16 @@ export const PlaygroundPage: React.FC = () => {
         alert("Invalid API Key Format.\n\nYou entered a Provider Key (e.g. Google/OpenAI) or a malformed key.\n\nPlease use a HimmiRouter API Key generated in the Dashboard. It must start with 'sk-or-v1-'.")
         return
     }
+    
+    // Clear previous comparison if starting new chat
+    setPendingComparison(null)
 
     const userMessage = { role: "user", content: input }
+    const currentInput = input // Capture for later use in vote
     const completedMessages = messages.filter(m => m.content !== "")
     const apiMessages = [...completedMessages, userMessage]
     
+    // Optimistic Update
     setMessages(prev => [...prev.filter(m => m.content !== ""), userMessage, { role: "assistant", content: "" }])
     setInput("")
     setIsLoading(true)
@@ -122,7 +134,8 @@ export const PlaygroundPage: React.FC = () => {
         body: JSON.stringify({
           model: selectedModel,
           messages: apiMessages,
-          stream: true
+          stream: !shadowMode, // Disable stream if shadow mode is ON to allow simpler capture
+          shadow_mode: shadowMode
         })
       })
 
@@ -133,62 +146,93 @@ export const PlaygroundPage: React.FC = () => {
             const jsonErr = JSON.parse(errText)
             errMsg = jsonErr.detail || jsonErr.error || errText
         } catch {}
-        
         throw new Error(`HTTP ${response.status}: ${errMsg} ${response.status === 401 ? "(Check your API Key)" : ""}`)
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantContent = ""
-      
-      while (true) {
-        const { done, value } = await reader!.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n")
-        
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const dataStr = line.slice(6).trim()
-            if (dataStr === "[DONE]") break
-            try {
-              const data = JSON.parse(dataStr)
-              const delta = data.choices?.[0]?.delta?.content || ""
-              assistantContent += delta
-              
-              if (delta) currentResponseTokens += 1 // Crude approximation
-              
-              setMessages(prev => {
-                const updated = [...prev]
-                updated[updated.length - 1] = { role: "assistant", content: assistantContent }
-                return updated
+      if (shadowMode) {
+          // Non-streaming response for Shadow Mode
+          const data = await response.json()
+          const primaryContent = data.choices?.[0]?.message?.content || ""
+          
+          setMessages(prev => {
+              const updated = [...prev]
+              updated[updated.length - 1] = { role: "assistant", content: primaryContent }
+              return updated
+          })
+          
+          if (data.shadow_response) {
+              setPendingComparison({
+                  prompt: currentInput,
+                  primaryModel: selectedModel,
+                  primaryResponse: primaryContent,
+                  shadowModel: data.shadow_model || "shadow-model",
+                  shadowResponse: data.shadow_response
               })
-              
-              // If usage is returned in the stream (LiteLLM feature)
-              if (data.usage) {
-                  const u = data.usage
-                  const cost = ((u.prompt_tokens * inputCostPer1M) + (u.completion_tokens * outputCostPer1M)) / 1_000_000
-                  setSessionUsage(prev => ({
-                      requests: prev.requests, 
-                      tokens: prev.tokens + u.completion_tokens, // simplistic add
-                      cost: prev.cost + cost
-                  }))
-              }
-              
-            } catch (e) {
-              // Ignore
-            }
           }
+          
+          // Update stats
+          if (data.usage) {
+               const u = data.usage
+               const cost = ((u.prompt_tokens * inputCostPer1M) + (u.completion_tokens * outputCostPer1M)) / 1_000_000
+               setSessionUsage(prev => ({
+                    requests: prev.requests + 1, 
+                    tokens: prev.tokens + u.completion_tokens, 
+                    cost: prev.cost + cost
+               }))
+          }
+          
+      } else {
+        // Streaming Logic (Existing)
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+        let assistantContent = ""
+        
+        while (true) {
+            const { done, value } = await reader!.read()
+            if (done) break
+
+            const chunk = decoder.decode(value)
+            const lines = chunk.split("\n")
+            
+            for (const line of lines) {
+            if (line.startsWith("data: ")) {
+                const dataStr = line.slice(6).trim()
+                if (dataStr === "[DONE]") break
+                try {
+                const data = JSON.parse(dataStr)
+                const delta = data.choices?.[0]?.delta?.content || ""
+                assistantContent += delta
+                
+                if (delta) currentResponseTokens += 1 
+                
+                setMessages(prev => {
+                    const updated = [...prev]
+                    updated[updated.length - 1] = { role: "assistant", content: assistantContent }
+                    return updated
+                })
+                
+                if (data.usage) {
+                    const u = data.usage
+                    const cost = ((u.prompt_tokens * inputCostPer1M) + (u.completion_tokens * outputCostPer1M)) / 1_000_000
+                    setSessionUsage(prev => ({
+                        requests: prev.requests, 
+                        tokens: prev.tokens + u.completion_tokens,
+                        cost: prev.cost + cost
+                    }))
+                }
+                
+                } catch (e) { }
+            }
+            }
         }
+        
+        // Update session stats manually if usage wasn't streamed
+        setSessionUsage(prev => ({ 
+            requests: prev.requests + 1,
+            tokens: prev.tokens + (currentResponseTokens), 
+            cost: prev.cost 
+        }))
       }
-      
-      // Update session stats manually if usage wasn't streamed
-      setSessionUsage(prev => ({ 
-          requests: prev.requests + 1,
-          tokens: prev.tokens + (currentResponseTokens), // rough est
-          cost: prev.cost // only update accurate cost if backend sends it
-      }))
       
       // Refresh credits
       const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
@@ -207,6 +251,30 @@ export const PlaygroundPage: React.FC = () => {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVote = async (preference: "primary" | "shadow") => {
+      if (!pendingComparison) return;
+      
+      try {
+          await fetch("http://localhost:4000/analytics/preference", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  prompt: pendingComparison.prompt,
+                  primary_model: pendingComparison.primaryModel,
+                  primary_response: pendingComparison.primaryResponse,
+                  shadow_model: pendingComparison.shadowModel,
+                  shadow_response: pendingComparison.shadowResponse,
+                  user_preference: preference
+              })
+          });
+          // Clear comparison after vote to show "Thank you" or just remove UI overlay
+          setPendingComparison(null);
+          // Optional: Show toast
+      } catch (e) {
+          console.error("Failed to submit preference", e);
+      }
   }
 
   return (
@@ -267,9 +335,24 @@ export const PlaygroundPage: React.FC = () => {
                     </option>
                 ))}
               </select>
-              <p className="text-[10px] text-muted-foreground">
-                Pricing is per 1M input tokens.
-              </p>
+            </div>
+            
+            {/* Shadow Mode Toggle */}
+            <div className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-bold text-purple-200 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-purple-400" /> Shadow Mode
+                    </label>
+                    <input 
+                        type="checkbox"
+                        checked={shadowMode}
+                        onChange={(e) => setShadowMode(e.target.checked)}
+                        className="accent-purple-500 w-4 h-4 cursor-pointer"
+                    />
+                </div>
+                <p className="text-[10px] text-purple-300/70 leading-relaxed">
+                    Runs a cheaper model (Llama-3 8B) alongside your primary selection to compare quality.
+                </p>
             </div>
 
             <div className="space-y-4">
@@ -283,34 +366,14 @@ export const PlaygroundPage: React.FC = () => {
                 onChange={(e) => setSelectedKey(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 focus:ring-2 focus:ring-emerald-500 outline-none transition-all text-sm font-mono"
               />
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-[11px] text-red-200 leading-relaxed flex gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 translate-y-0.5 text-red-400" />
-                <p>
-                  <span className="font-bold text-red-400">DO NOT</span> use Google/OpenAI keys here. You must generate a <span className="font-bold text-emerald-400">HimmiRouter Key</span> in the Dashboard.
-                </p>
-              </div>
             </div>
 
             <button 
-              onClick={() => setMessages([])}
+              onClick={() => { setMessages([]); setPendingComparison(null); }}
               className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-muted-foreground hover:bg-white/5 transition-all text-sm"
             >
               <Trash2 className="w-4 h-4" /> Clear Chat
             </button>
-            
-            <div className="mt-8 pt-6 border-t border-white/10">
-                <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">SDK Usage</h4>
-                <div className="bg-black/40 rounded-lg p-3 border border-white/5 font-mono text-[10px] text-muted-foreground overflow-x-auto">
-                    <span className="text-purple-400">import</span> openai<br/>
-                    <br/>
-                    client = openai.OpenAI(<br/>
-                    &nbsp;&nbsp;base_url=<span className="text-green-400">"http://localhost:4000/v1"</span>,<br/>
-                    &nbsp;&nbsp;api_key=<span className="text-green-400">"{selectedKey || 'YOUR_KEY'}"</span><br/>
-                    )<br/>
-                    <br/>
-                    check = client.models.list()
-                </div>
-            </div>
           </div>
 
           {/* Chat Interface */}
@@ -358,6 +421,52 @@ export const PlaygroundPage: React.FC = () => {
                       </div>
                     </motion.div>
                   ))}
+                  
+                  {/* Shadow Comparison UI */}
+                  {pendingComparison && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="mt-8 p-6 rounded-2xl border border-purple-500/30 bg-purple-900/10 backdrop-blur-sm"
+                      >
+                          <h3 className="text-center text-purple-200 font-bold mb-6 flex items-center justify-center gap-2">
+                              <Sparkles className="w-5 h-5" />
+                              Shadow Mode Comparison
+                              <span className="text-xs font-normal text-purple-300/50 ml-2">(RLHF Data Collection)</span>
+                          </h3>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              {/* Primary Answer */}
+                              <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-col">
+                                  <div className="text-xs font-bold text-emerald-400 mb-2 uppercase tracking-wider">{pendingComparison.primaryModel} (Primary)</div>
+                                  <div className="flex-1 text-sm text-gray-300 prose prose-invert max-w-none mb-4 max-h-60 overflow-y-auto">
+                                     <ReactMarkdown>{pendingComparison.primaryResponse}</ReactMarkdown>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleVote("primary")}
+                                    className="w-full mt-auto flex items-center justify-center gap-2 py-2 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 transition-all font-semibold text-xs"
+                                  >
+                                      <ThumbsUp className="w-3 h-3" /> Better Response
+                                  </button>
+                              </div>
+                              
+                              {/* Shadow Answer */}
+                              <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex flex-col">
+                                  <div className="text-xs font-bold text-purple-400 mb-2 uppercase tracking-wider">Llama-3 (Shadow)</div>
+                                  <div className="flex-1 text-sm text-gray-300 prose prose-invert max-w-none mb-4 max-h-60 overflow-y-auto">
+                                     <ReactMarkdown>{pendingComparison.shadowResponse}</ReactMarkdown>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleVote("shadow")}
+                                    className="w-full mt-auto flex items-center justify-center gap-2 py-2 rounded-lg bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/20 transition-all font-semibold text-xs"
+                                  >
+                                      <ThumbsUp className="w-3 h-3" /> Better Response
+                                  </button>
+                              </div>
+                          </div>
+                      </motion.div>
+                  )}
+                  
                 </AnimatePresence>
               )}
             </div>
@@ -379,9 +488,6 @@ export const PlaygroundPage: React.FC = () => {
                   <Send className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-[10px] text-center mt-3 text-muted-foreground uppercase tracking-widest">
-                Real-time usage tracking enabled • Each request consumes credits
-              </p>
             </div>
           </div>
         </div>
