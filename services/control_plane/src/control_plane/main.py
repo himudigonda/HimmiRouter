@@ -55,3 +55,10 @@ async def create_new_key(
 
     # Return the raw key ONLY once
     return {"id": new_key.id, "name": new_key.name, "api_key": raw_key}
+
+
+@app.get("/api-keys")
+async def list_api_keys(user_id: int, session: AsyncSession = Depends(get_session)):
+    stmt = select(ApiKey).where(ApiKey.user_id == user_id)
+    res = await session.execute(stmt)
+    return res.scalars().all()
