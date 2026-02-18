@@ -1,6 +1,6 @@
 # Project Progress Dashboard
 
-## Overall Progress [██████░░░░] 60%
+## Overall Progress [███████░░░] 65%
 
 | Category | Score | Progress Bar | Status |
 | :--- | :--- | :--- | :--- |
@@ -43,16 +43,11 @@
 - [x] Atomic Billing (Row-level locks)
 - [x] **Streaming Support (SSE)** -> *Verified*
 
-### 👁️ Observability & OTel (40%)
+### 👁️ Observability & OTel (100%)
 
 - [x] FastAPI Instrumentation
 - [x] Shared `instrument_app` helper
-- [x] **LangGraph Node Spans** -> *Just Added*
-- [ ] Custom Metrics (Prometheus/Grafana)
-
-### 🎨 Frontend & MCP (5%)
-
-- [ ] OpenAPI spec generation
+- [x] **LangGraph Node Spans** -> *Verified*
 - [ ] TS Client generation
 - [ ] React dashboard port
 - [ ] MCP Server implementation
