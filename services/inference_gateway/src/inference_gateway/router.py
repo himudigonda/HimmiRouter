@@ -144,7 +144,21 @@ async def call_llm_node(state: GatewayState):
 
     try:
         # LiteLLM handles the standardized call
-        provider_name = state["provider_info"]["name"].lower()
+        raw_provider = state["provider_info"]["name"]
+
+        # Map DB provider names to LiteLLM provider prefixes
+        LITELLM_PROVIDER_MAP = {
+            "Google AI": "gemini",
+            "OpenAI": "openai",
+            "Anthropic": "anthropic",
+            "Groq": "groq",
+            "Perplexity": "perplexity",
+            "Mistral AI": "mistral",  # DB name might be "Mistral" or "Mistral AI", check seed
+            "Mistral": "mistral",
+            "xAI": "xai",
+        }
+
+        provider_name = LITELLM_PROVIDER_MAP.get(raw_provider, raw_provider.lower())
         model_name = state["provider_info"]["model_name"]
 
         # Determine if we should stream

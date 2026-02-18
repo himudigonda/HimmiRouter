@@ -24,7 +24,7 @@ run-control:
 	uv run uvicorn control_plane.main:app --host 0.0.0.0 --port 8000 --reload
 
 run-gateway:
-	HIMMI_SIMULATOR=true uv run uvicorn inference_gateway.main:app --host 0.0.0.0 --port 4000 --reload
+	HIMMI_SIMULATOR=false uv run uvicorn inference_gateway.main:app --host 0.0.0.0 --port 4000 --reload
 
 run-frontend:
 	cd apps/dashboard-frontend && {{BUN}} dev
