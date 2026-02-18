@@ -1,9 +1,25 @@
+from functools import wraps
+
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+tracer = trace.get_tracer(__name__)
+
+
+def trace_node(name: str):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            with tracer.start_as_current_span(f"graph_node.{name}"):
+                return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def instrument_app(app, service_name: str):
