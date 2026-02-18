@@ -1,21 +1,15 @@
-# HimmiRouter Justfile
-
 setup:
 	uv sync
-
-up:
 	docker compose -f docker-compose.dev.yml up -d
-
-down:
-	docker compose -f docker-compose.dev.yml down
 
 test:
 	uv run pytest
 
 lint:
-	uv run ruff check .
-	uv run ruff format --check .
+	uv run ruff check . --fix
 
-format:
-	uv run ruff format .
-	uv run ruff check --fix .
+run-control:
+	cd services/control_plane && uv run uvicorn main:app --port 8000 --reload
+
+run-gateway:
+	cd services/inference_gateway && uv run uvicorn main:app --port 4000 --reload

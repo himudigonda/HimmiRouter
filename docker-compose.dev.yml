@@ -1,35 +1,21 @@
+version: '3.8'
 services:
   postgres:
     image: postgres:16-alpine
-    restart: always
     environment:
-      POSTGRES_USER: postgres
+      POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: himmirouter
+      POSTGRES_DB: openrouter
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
-    restart: always
     ports:
       - "6379:6379"
 
   jaeger:
     image: jaegertracing/all-in-one:latest
-    restart: always
     ports:
       - "16686:16686" # UI
       - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-
-  phoenix:
-    image: arizephoenix/phoenix:latest
-    restart: always
-    ports:
-      - "6006:6006" # UI
-
-volumes:
-  postgres_data:
