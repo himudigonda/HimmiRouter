@@ -20,7 +20,7 @@ async def register(
     email: str, password: str, session: AsyncSession = Depends(get_session)
 ):
     # Simple check if user exists
-    existing = await session.exec(select(User).where(User.email == email))
+    existing = await session.execute(select(User).where(User.email == email))
     if existing.first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
