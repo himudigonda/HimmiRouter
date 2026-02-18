@@ -1,7 +1,10 @@
-from database.models import ApiKey
+import hashlib
+
+from database.models import ApiKey, User
 from database.session import get_session
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
 from shared.security import generate_api_key
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 app = FastAPI(title="OpenRouter Control Plane")
@@ -10,6 +13,28 @@ app = FastAPI(title="OpenRouter Control Plane")
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.post("/auth/register")
+async def register(
+    email: str, password: str, session: AsyncSession = Depends(get_session)
+):
+    # Simple check if user exists
+    existing = await session.exec(select(User).where(User.email == email))
+    if existing.first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    # In production, use passlib/argon2 to hash passwords
+    # For now, we simple hash for the sake of the port
+    new_user = User(
+        email=email,
+        hashed_password=hashlib.sha256(password.encode()).hexdigest(),
+        credits=1000,
+    )
+    session.add(new_user)
+    await session.commit()
+    await session.refresh(new_user)
+    return {"id": new_user.id, "email": new_user.email, "credits": new_user.credits}
 
 
 @app.post("/api-keys/create")

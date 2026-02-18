@@ -1,6 +1,16 @@
 setup:
+	[ -f .env ] || cp .env.example .env
 	uv sync
 	docker compose -f docker-compose.dev.yml up -d
+	# Wait for DB to be ready and run migrations
+	sleep 5
+	just migrate
+
+migrate:
+	cd packages/database && uv run alembic upgrade head
+
+seed:
+	cd packages/database && uv run python -m database.seed
 
 test:
 	uv run pytest
