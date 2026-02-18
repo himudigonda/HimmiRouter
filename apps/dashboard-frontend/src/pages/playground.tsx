@@ -2,8 +2,17 @@ import type { ModelResponse } from "@/client-control"
 import { DefaultService as ControlService } from "@/client-control"
 import { DashboardLayout } from "@/components/layout"
 import { AnimatePresence, motion } from "framer-motion"
+import "highlight.js/styles/atom-one-dark.css"
 import { Activity, AlertCircle, Bot, Cpu, Key, Send, Sparkles, Trash2, User } from "lucide-react"
 import React, { useEffect, useRef, useState } from "react"
+import ReactMarkdown from "react-markdown"
+import rehypeHighlight from "rehype-highlight"
+
+// Helper to clean up markdown (e.g. sometimes spacing is off)
+const preprocessMarkdown = (markdown: string) => {
+  // Ensure code blocks have newlines before/after
+  return markdown
+}
 
 export const PlaygroundPage: React.FC = () => {
   const [models, setModels] = useState<ModelResponse[]>([])
@@ -334,10 +343,18 @@ export const PlaygroundPage: React.FC = () => {
                       }`}>
                         {msg.role === "user" ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
                       </div>
-                      <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${
-                        msg.role === "user" ? "bg-primary/20 text-foreground" : "bg-white/5 border border-white/10"
+                      <div className={`px-4 py-2 rounded-2xl max-w-[85%] overflow-hidden ${
+                        msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-white/5 border border-white/10"
                       }`}>
-                        <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content || (isLoading && i === messages.length - 1 ? "..." : "")}</p>
+                        {msg.role === "user" ? (
+                           <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        ) : (
+                           <div className="text-sm prose prose-invert prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 max-w-none break-words dark:prose-invert">
+                               <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
+                                   {preprocessMarkdown(msg.content || (isLoading && i === messages.length - 1 ? "..." : ""))}
+                               </ReactMarkdown>
+                           </div>
+                        )}
                       </div>
                     </motion.div>
                   ))}

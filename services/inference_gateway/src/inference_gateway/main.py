@@ -41,10 +41,23 @@ async def health():
 
 async def sse_generator(stream_iterator):
     """Formats chunks into SSE events."""
-    async for chunk in stream_iterator:
-        # LiteLLM chunk transformation to OpenAI-style SSE
-        # In a real app we'd format this systematically
-        yield f"data: {json.dumps(chunk.model_dump())}\n\n"
+    try:
+        async for chunk in stream_iterator:
+            # Handle both Pydantic v1/v2 and dicts
+            if hasattr(chunk, "model_dump"):
+                data = chunk.model_dump()
+            elif hasattr(chunk, "dict"):
+                data = chunk.dict()
+            else:
+                data = chunk
+
+            # Ensure compatible format
+            yield f"data: {json.dumps(data, default=str)}\n\n"
+    except Exception as e:
+        print(f"Streaming Error: {e}")
+        # Optionally yield an error event
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
     yield "data: [DONE]\n\n"
 
 

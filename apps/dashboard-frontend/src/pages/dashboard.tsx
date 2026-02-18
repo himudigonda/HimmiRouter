@@ -125,7 +125,7 @@ export const DashboardPage: React.FC = () => {
                     placeholder="Key Name (e.g. Production Client)"
                     value={newKeyName}
                     onChange={(e) => setNewKeyName(e.target.value)}
-                    className="bg-white/5"
+                    className="bg-white/5 border-white/10 text-white placeholder:text-muted-foreground focus:bg-white/10 transition-colors"
                     required
                   />
                 </div>
@@ -144,20 +144,24 @@ export const DashboardPage: React.FC = () => {
                 animate={{ opacity: 1, height: "auto" }}
                 exit={{ opacity: 0, height: 0 }}
               >
-                <Card className="bg-primary/10 border-primary/30 text-primary-foreground">
+                <Card className="bg-emerald-500/10 border-emerald-500/30 text-emerald-100">
                   <CardHeader className="py-4">
-                    <CardTitle className="text-sm">New Key Generated</CardTitle>
-                    <CardDescription className="text-primary-foreground/70">
+                    <CardTitle className="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                      <Check className="w-4 h-4" /> New Key Generated
+                    </CardTitle>
+                    <CardDescription className="text-emerald-200/80">
                       Copy this key now. You won't be able to see it again.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pb-4">
-                    <div className="flex items-center gap-2 p-3 bg-black/40 rounded-lg border border-white/10">
-                      <code className="flex-1 font-mono text-xs overflow-x-auto">{lastCreatedKey}</code>
+                    <div className="flex items-center gap-2 p-3 bg-black/40 rounded-lg border border-white/10 group relative">
+                      <code className="flex-1 font-mono text-xs overflow-x-auto text-emerald-400 select-all selection:bg-emerald-500/30">
+                        {lastCreatedKey}
+                      </code>
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8"
+                        className="h-8 w-8 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/20"
                         onClick={() => copyToClipboard(lastCreatedKey)}
                       >
                         {copiedKey === lastCreatedKey ? <Check size={14} /> : <Copy size={14} />}

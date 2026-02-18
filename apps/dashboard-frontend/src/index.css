@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
 
 @theme {
   --color-background: oklch(0.1 0 0);
@@ -38,6 +40,9 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  input, textarea, select {
+      @apply bg-transparent text-foreground;
   }
 }
 
