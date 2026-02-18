@@ -10,6 +10,7 @@ GatewayOpenAPI.BASE = "http://localhost:4000"
 
 import { ModelsPage } from "./pages/models"
 import { PlaygroundPage } from "./pages/playground"
+import { SettingsPage } from "./pages/settings"
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
@@ -40,6 +41,8 @@ function App() {
         return <PlaygroundPage />
       case "/models":
         return <ModelsPage />
+      case "/settings":
+        return <SettingsPage />
       default:
         return <DashboardPage />
     }

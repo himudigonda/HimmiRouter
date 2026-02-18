@@ -120,7 +120,7 @@ export const ModelsPage: React.FC = () => {
                                     <span>Input</span>
                                   </div>
                                   <div className="font-mono text-foreground">
-                                    ${model.mappings?.[0]?.input_token_cost || 0} <span className="text-muted-foreground">/ 1M</span>
+                                    ${(model.mappings?.[0]?.input_token_cost || 0).toFixed(2)} <span className="text-muted-foreground">/ 1M</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
@@ -129,7 +129,7 @@ export const ModelsPage: React.FC = () => {
                                     <span>Output</span>
                                   </div>
                                   <div className="font-mono text-emerald-400">
-                                    ${model.mappings?.[0]?.output_token_cost || 0} <span className="text-muted-foreground">/ 1M</span>
+                                    ${(model.mappings?.[0]?.output_token_cost || 0).toFixed(2)} <span className="text-muted-foreground">/ 1M</span>
                                   </div>
                                 </div>
                               </div>

@@ -75,14 +75,28 @@ async def seed_data():
                 # Costs are in USD per 1M tokens
                 models_to_seed = [
                     # OpenAI
-                    # GPT-4o: $2.50 in, $10.00 out
                     (openai_co, "GPT-4o", "gpt-4o", 2.50, 10.00, "openai"),
-                    # GPT-4o Mini: $0.15 in, $0.60 out
                     (openai_co, "GPT-4o Mini", "gpt-4o-mini", 0.15, 0.60, "openai"),
-                    # o1-preview: $15.00 in, $60.00 out
                     (openai_co, "o1-preview", "o1-preview", 15.00, 60.00, "openai"),
+                    # 2025/2026 Releases
+                    (
+                        openai_co,
+                        "GPT-4.5 (Orion)",
+                        "gpt-4.5-preview",
+                        75.00,
+                        150.00,
+                        "openai",
+                    ),
+                    (
+                        openai_co,
+                        "GPT-5",
+                        "gpt-5",
+                        15.00,
+                        120.00,
+                        "openai",
+                    ),  # Using Pro estimate
+                    (openai_co, "GPT-5.2", "gpt-5.2", 1.75, 14.00, "openai"),
                     # Anthropic
-                    # Claude 3.5 Sonnet: $3.00 in, $15.00 out
                     (
                         anthropic_co,
                         "Claude 3.5 Sonnet",
@@ -91,7 +105,6 @@ async def seed_data():
                         15.00,
                         "anthropic",
                     ),
-                    # Claude 3 Opus: $15.00 in, $75.00 out
                     (
                         anthropic_co,
                         "Claude 3 Opus",
@@ -100,8 +113,40 @@ async def seed_data():
                         75.00,
                         "anthropic",
                     ),
+                    # 2025/2026 Releases
+                    (
+                        anthropic_co,
+                        "Claude 3.7 Sonnet",
+                        "claude-3-7-sonnet",
+                        3.00,
+                        15.00,
+                        "anthropic",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude 4.5 Sonnet",
+                        "claude-4-5-sonnet",
+                        3.00,
+                        15.00,
+                        "anthropic",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude 4.5 Opus",
+                        "claude-4-5-opus",
+                        5.00,
+                        25.00,
+                        "anthropic",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude 4.6 Opus",
+                        "claude-4-6-opus",
+                        5.00,
+                        25.00,
+                        "anthropic",
+                    ),
                     # Google
-                    # Gemini 1.5 Pro: $1.25 in, $5.00 out (approx <128k context)
                     (
                         google_co,
                         "Gemini 1.5 Pro",
@@ -110,7 +155,6 @@ async def seed_data():
                         5.00,
                         "google",
                     ),
-                    # Gemini 1.5 Flash: $0.075 in, $0.30 out
                     (
                         google_co,
                         "Gemini 1.5 Flash",
@@ -119,6 +163,16 @@ async def seed_data():
                         0.30,
                         "google",
                     ),
+                    # 2025/2026 Releases
+                    (
+                        google_co,
+                        "Gemini 2.5 Pro",
+                        "gemini-2.5-pro",
+                        1.25,
+                        10.00,
+                        "google",
+                    ),
+                    (google_co, "Gemini 3 Pro", "gemini-3-pro", 2.00, 12.00, "google"),
                     # Groq (Ultra-fast Llama)
                     (
                         groq_co,
@@ -149,16 +203,8 @@ async def seed_data():
                         perplexity_co,
                         "Sonar Large Online",
                         "llama-3-sonar-large-32k-online",
-                        1,
-                        1,
-                        "perplexity",
-                    ),
-                    (
-                        perplexity_co,
-                        "Sonar Small Chat",
-                        "llama-3-sonar-small-32k-chat",
-                        0.2,
-                        0.2,
+                        3.00,
+                        15.00,
                         "perplexity",
                     ),
                     # Mistral
@@ -166,12 +212,42 @@ async def seed_data():
                         mistral_co,
                         "Mistral Large 2",
                         "mistral-large-latest",
-                        3,
-                        9,
+                        2.00,
+                        6.00,
                         "mistral",
                     ),
-                    (mistral_co, "Codestral", "codestral-latest", 1, 3, "mistral"),
+                    (
+                        mistral_co,
+                        "Mistral Large 3",
+                        "mistral-large-3",
+                        0.50,
+                        1.50,
+                        "mistral",
+                    ),
+                    (
+                        mistral_co,
+                        "Codestral",
+                        "codestral-latest",
+                        0.30,
+                        0.90,
+                        "mistral",
+                    ),
+                    # xAI (Grok)
+                    (
+                        get_or_create(Company, name="xAI", website="https://x.ai"),
+                        "Grok 3",
+                        "grok-3",
+                        3.00,
+                        15.00,
+                        "xai",
+                    ),
                 ]
+
+                # Update providers dict for xAI
+                xai_provider = get_or_create(
+                    Provider, name="xAI", website="https://x.ai/api"
+                )
+                providers["xai"] = xai_provider
 
                 for co, name, slug, in_cost, out_cost, prov_key in models_to_seed:
                     # Check if model exists

@@ -8,7 +8,9 @@ interface LayoutProps {
 }
 
 export const DashboardLayout: React.FC<LayoutProps> = ({ children }) => {
-  const [activePath, setActivePath] = React.useState(window.location.pathname)
+  const [activePath, setActivePath] = React.useState(
+    window.location.pathname === "/" ? "/dashboard" : window.location.pathname
+  )
 
   const navItems = [
     { name: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
@@ -16,6 +18,15 @@ export const DashboardLayout: React.FC<LayoutProps> = ({ children }) => {
     { name: "Model Library", icon: Library, href: "/models" },
     { name: "Settings", icon: Settings, href: "/settings" },
   ]
+
+  React.useEffect(() => {
+    const handleLocationChange = () => {
+      const path = window.location.pathname === "/" ? "/dashboard" : window.location.pathname
+      setActivePath(path)
+    }
+    window.addEventListener("popstate", handleLocationChange)
+    return () => window.removeEventListener("popstate", handleLocationChange)
+  }, [])
 
   const handleLogout = () => {
     AuthService.logout()
