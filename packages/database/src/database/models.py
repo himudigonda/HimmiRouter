@@ -10,6 +10,17 @@ class User(SQLModel, table=True):
     hashed_password: str
     credits: float = Field(default=5.0)  # Default $5.00 trial
     api_keys: List["ApiKey"] = Relationship(back_populates="user")
+    provider_keys: List["UserProviderKey"] = Relationship(back_populates="user")
+
+
+class UserProviderKey(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    provider_name: str  # e.g. "openai", "google"
+    encrypted_key: str  # Encrypted string
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    user: User = Relationship(back_populates="provider_keys")
 
 
 class ApiKey(SQLModel, table=True):

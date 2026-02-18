@@ -4,6 +4,7 @@
 /* eslint-disable */
 import type { AuthRequest } from '../models/AuthRequest';
 import type { ModelResponse } from '../models/ModelResponse';
+import type { ProviderKeyRequest } from '../models/ProviderKeyRequest';
 import type { CancelablePromise } from '../core/CancelablePromise';
 import { OpenAPI } from '../core/OpenAPI';
 import { request as __request } from '../core/request';
@@ -125,6 +126,73 @@ export class DefaultService {
             url: '/users/{user_id}',
             path: {
                 'user_id': userId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Add Provider Key
+     * @param userId
+     * @param requestBody
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static addProviderKeyUsersUserIdProviderKeysPost(
+        userId: number,
+        requestBody: ProviderKeyRequest,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/users/{user_id}/provider-keys',
+            path: {
+                'user_id': userId,
+            },
+            body: requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * List Provider Keys
+     * @param userId
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listProviderKeysUsersUserIdProviderKeysGet(
+        userId: number,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/users/{user_id}/provider-keys',
+            path: {
+                'user_id': userId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
+    /**
+     * Delete Provider Key
+     * @param userId
+     * @param providerName
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static deleteProviderKeyUsersUserIdProviderKeysProviderNameDelete(
+        userId: number,
+        providerName: string,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/users/{user_id}/provider-keys/{provider_name}',
+            path: {
+                'user_id': userId,
+                'provider_name': providerName,
             },
             errors: {
                 422: `Validation Error`,

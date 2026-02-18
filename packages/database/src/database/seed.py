@@ -2,7 +2,7 @@ import asyncio
 
 from database.models import Company, Model, ModelProviderMapping, Provider
 from database.session import engine
-from sqlmodel import Session, select
+from sqlmodel import select
 
 
 async def seed_data():
@@ -11,7 +11,6 @@ async def seed_data():
         from sqlalchemy.orm import Session as SyncSession
 
         def sync_seed(connection):
-            from sqlalchemy.orm import Session as SyncSession
 
             with SyncSession(bind=connection) as session:
                 # helper to get or create

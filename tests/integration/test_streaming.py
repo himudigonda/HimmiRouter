@@ -1,5 +1,4 @@
 import hashlib
-import json
 
 import pytest
 from database.models import ApiKey, User
@@ -55,7 +54,7 @@ async def test_streaming_e2e(gateway_ac: AsyncClient):
         initial_credits = user.credits
 
     # 2. Execution with Mocks
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     # Mock chunks
     class MockChunk:

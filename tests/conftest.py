@@ -1,4 +1,3 @@
-import asyncio
 
 import pytest
 from control_plane.main import app

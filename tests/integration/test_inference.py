@@ -57,7 +57,6 @@ async def test_inference_e2e(gateway_ac: AsyncClient):
     # 2. Execution Phase: Call the Gateway
     from unittest.mock import AsyncMock, patch
 
-    import litellm
 
     mock_response = AsyncMock()
     mock_response.choices = [AsyncMock(message=AsyncMock(content="Hello world!"))]

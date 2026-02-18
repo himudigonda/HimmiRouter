@@ -1,4 +1,4 @@
-from database.models import ApiKey, Company, Model, User
+from database.models import ApiKey, Model, User
 from database.session import get_session
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,3 +131,67 @@ async def get_user_status(user_id: int, session: AsyncSession = Depends(get_sess
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {"id": user.id, "email": user.email, "credits": user.credits}
+
+
+from database.encryption import encrypt
+from database.models import UserProviderKey
+
+
+class ProviderKeyRequest(BaseModel):
+    provider_name: str
+    api_key: str
+
+
+@app.post("/users/{user_id}/provider-keys")
+async def add_provider_key(
+    user_id: int, req: ProviderKeyRequest, session: AsyncSession = Depends(get_session)
+):
+    # Check if exists
+    stmt = select(UserProviderKey).where(
+        UserProviderKey.user_id == user_id,
+        UserProviderKey.provider_name == req.provider_name,
+    )
+    existing = await session.execute(stmt)
+    key_entry = existing.scalar_one_or_none()
+
+    if key_entry:
+        key_entry.encrypted_key = encrypt(req.api_key)
+    else:
+        key_entry = UserProviderKey(
+            user_id=user_id,
+            provider_name=req.provider_name,
+            encrypted_key=encrypt(req.api_key),
+        )
+        session.add(key_entry)
+
+    await session.commit()
+    return {"status": "success", "provider": req.provider_name}
+
+
+@app.get("/users/{user_id}/provider-keys")
+async def list_provider_keys(
+    user_id: int, session: AsyncSession = Depends(get_session)
+):
+    stmt = select(UserProviderKey).where(UserProviderKey.user_id == user_id)
+    res = await session.execute(stmt)
+    keys = res.scalars().all()
+    return [{"provider": k.provider_name, "configured": True} for k in keys]
+
+
+@app.delete("/users/{user_id}/provider-keys/{provider_name}")
+async def delete_provider_key(
+    user_id: int, provider_name: str, session: AsyncSession = Depends(get_session)
+):
+    stmt = select(UserProviderKey).where(
+        UserProviderKey.user_id == user_id,
+        UserProviderKey.provider_name == provider_name,
+    )
+    res = await session.execute(stmt)
+    key_entry = res.scalar_one_or_none()
+
+    if key_entry:
+        await session.delete(key_entry)
+        await session.commit()
+        return {"status": "deleted"}
+
+    raise HTTPException(status_code=404, detail="Key not found")

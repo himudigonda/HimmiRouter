@@ -4,7 +4,15 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator, List, Optional, TypedDict
 
 import litellm
-from database.models import ApiKey, Model, ModelProviderMapping, Provider, User
+from database.encryption import decrypt
+from database.models import (
+    ApiKey,
+    Model,
+    ModelProviderMapping,
+    Provider,
+    User,
+    UserProviderKey,
+)
 from database.session import engine
 from langgraph.graph import END, StateGraph
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +40,19 @@ class GatewayState(TypedDict):
 
 
 from shared.instrumentation import trace_node
+
+# Map DB provider names to LiteLLM provider prefixes
+LITELLM_PROVIDER_MAP = {
+    "Google AI": "gemini",
+    "OpenAI": "openai",
+    "Anthropic": "anthropic",
+    "Groq": "groq",
+    "Perplexity": "perplexity",
+    "Mistral AI": "mistral",
+    "Mistral": "mistral",
+    "xAI": "xai",
+}
+
 
 # --- NODES ---
 
@@ -85,11 +106,33 @@ async def route_node(state: GatewayState):
 
         model_db, mapping_db, provider_db = row
 
+        # Check for User-Specified Provider Key (BYOK)
+        # We need to look up using the canonical name that the frontend uses
+        canonical_provider = LITELLM_PROVIDER_MAP.get(
+            provider_db.name, provider_db.name.lower()
+        )
+
+        key_stmt = select(UserProviderKey).where(
+            UserProviderKey.user_id == state["user_id"],
+            UserProviderKey.provider_name == canonical_provider,
+        )
+        key_res = await session.execute(key_stmt)
+        user_key_entry = key_res.scalar_one_or_none()
+
+        user_api_key = None
+        if user_key_entry:
+            try:
+                user_api_key = decrypt(user_key_entry.encrypted_key)
+            except Exception:
+                # If decryption fails, log it and fallback? Or error?
+                pass
+
         # We store the provider details and costs for the billing node
         return {
             "provider_info": {
                 "name": provider_db.name,
                 "model_name": state["model_slug"].split("/")[-1],  # e.g. "gpt-4o"
+                "api_key": user_api_key,  # Pass encrypted key context
             },
             "costs": {
                 "input": mapping_db.input_token_cost,
@@ -146,20 +189,11 @@ async def call_llm_node(state: GatewayState):
         # LiteLLM handles the standardized call
         raw_provider = state["provider_info"]["name"]
 
-        # Map DB provider names to LiteLLM provider prefixes
-        LITELLM_PROVIDER_MAP = {
-            "Google AI": "gemini",
-            "OpenAI": "openai",
-            "Anthropic": "anthropic",
-            "Groq": "groq",
-            "Perplexity": "perplexity",
-            "Mistral AI": "mistral",  # DB name might be "Mistral" or "Mistral AI", check seed
-            "Mistral": "mistral",
-            "xAI": "xai",
-        }
-
         provider_name = LITELLM_PROVIDER_MAP.get(raw_provider, raw_provider.lower())
         model_name = state["provider_info"]["model_name"]
+
+        # Get optional BYOK
+        user_api_key = state["provider_info"].get("api_key")
 
         # Determine if we should stream
         stream = state.get("stream", False)
@@ -168,6 +202,7 @@ async def call_llm_node(state: GatewayState):
             model=f"{provider_name}/{model_name}",
             messages=state["messages"],
             stream=stream,
+            api_key=user_api_key,  # None means use env var
         )
 
         if stream:

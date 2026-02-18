@@ -2,7 +2,6 @@ import os
 
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
-from sqlmodel import SQLModel
 
 # Database URL - logic to use env or default for local dev
 DATABASE_URL = os.getenv(

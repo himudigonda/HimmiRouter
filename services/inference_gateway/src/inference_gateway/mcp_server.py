@@ -1,4 +1,3 @@
-import json
 
 from inference_gateway.router import gateway_app
 from mcp.server.fastmcp import FastMCP
