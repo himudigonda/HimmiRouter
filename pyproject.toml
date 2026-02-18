@@ -24,7 +24,8 @@ shared = { workspace = true }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_test_loop_scope = "function"
+asyncio_default_test_loop_scope = "session"
+pythonpath = ["services/control_plane/src", "services/inference_gateway/src", "packages/database/src", "packages/shared/src"]
 
 [tool.ruff]
 line-length = 88
