@@ -1,4 +1,4 @@
-from database.models import ApiKey, User
+from database.models import ApiKey, Company, Model, User
 from database.session import get_session
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,3 +71,18 @@ async def list_api_keys(user_id: int, session: AsyncSession = Depends(get_sessio
     stmt = select(ApiKey).where(ApiKey.user_id == user_id)
     res = await session.execute(stmt)
     return res.scalars().all()
+
+
+@app.get("/models")
+async def list_models(session: AsyncSession = Depends(get_session)):
+    stmt = select(Model)
+    res = await session.execute(stmt)
+    return res.scalars().all()
+
+
+@app.get("/users/{user_id}")
+async def get_user_status(user_id: int, session: AsyncSession = Depends(get_session)):
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"id": user.id, "email": user.email, "credits": user.credits}

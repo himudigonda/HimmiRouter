@@ -1,3 +1,5 @@
+BUN := "$HOME/.bun/bin/bun"
+
 setup:
 	[ -f .env ] || cp .env.example .env
 	uv sync
@@ -19,13 +21,13 @@ lint:
 	uv run ruff check . --fix
 
 run-control:
-	uv run uvicorn control_plane.main:app --port 8000 --reload
+	uv run uvicorn control_plane.main:app --host 0.0.0.0 --port 8000 --reload
 
 run-gateway:
-	uv run uvicorn inference_gateway.main:app --port 4000 --reload
+	HIMMI_SIMULATOR=true uv run uvicorn inference_gateway.main:app --host 0.0.0.0 --port 4000 --reload
 
 run-frontend:
-	cd apps/dashboard-frontend && bun dev
+	cd apps/dashboard-frontend && {{BUN}} dev
 
 generate-spec:
 	mkdir -p apps/dashboard-frontend/specs
@@ -33,9 +35,23 @@ generate-spec:
 	uv run python -c "import json; from inference_gateway.main import app; print(json.dumps(app.openapi()))" > apps/dashboard-frontend/specs/openapi-gateway.json
 
 install-frontend: generate-spec
-	cd apps/dashboard-frontend && bun install
-	cd apps/dashboard-frontend && bun x openapi-typescript-codegen --input specs/openapi-control.json --output ./src/client-control --client fetch
-	cd apps/dashboard-frontend && bun x openapi-typescript-codegen --input specs/openapi-gateway.json --output ./src/client-gateway --client fetch
+	cd apps/dashboard-frontend && {{BUN}} install
+	cd apps/dashboard-frontend && {{BUN}} x openapi-typescript-codegen --input specs/openapi-control.json --output ./src/client-control --client fetch
+	cd apps/dashboard-frontend && {{BUN}} x openapi-typescript-codegen --input specs/openapi-gateway.json --output ./src/client-gateway --client fetch
 
-dev:
+kill-all:
+	pkill -f uvicorn || true
+	pkill -f "bun dev" || true
+	pkill -f "vite" || true
+
+destroy: kill-all
+	docker compose -f docker-compose.dev.yml down -v
+	rm -rf apps/dashboard-frontend/specs
+	rm -rf apps/dashboard-frontend/src/client-control
+	rm -rf apps/dashboard-frontend/src/client-gateway
+
+run-all: kill-all
+	just run-control & just run-gateway & just run-frontend
+
+dev: kill-all
 	# Run this in multiple terminals: just run-control, just run-gateway, just run-frontend

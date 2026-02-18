@@ -20,6 +20,12 @@ export class AuthService {
     return session ? JSON.parse(session) : null
   }
 
+  static async getUserStatus() {
+    const user = this.getSession()
+    if (!user) return null
+    return await ControlService.getUserStatusUsersUserIdGet(user.id)
+  }
+
   static logout() {
     localStorage.removeItem(this.AUTH_KEY)
   }

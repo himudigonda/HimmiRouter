@@ -83,4 +83,35 @@ export class DefaultService {
             },
         });
     }
+    /**
+     * List Models
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static listModelsModelsGet(): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/models',
+        });
+    }
+    /**
+     * Get User Status
+     * @param userId
+     * @returns any Successful Response
+     * @throws ApiError
+     */
+    public static getUserStatusUsersUserIdGet(
+        userId: number,
+    ): CancelablePromise<any> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/users/{user_id}',
+            path: {
+                'user_id': userId,
+            },
+            errors: {
+                422: `Validation Error`,
+            },
+        });
+    }
 }

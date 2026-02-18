@@ -105,6 +105,43 @@ async def call_llm_node(state: GatewayState):
     if state.get("error"):
         return state
 
+    import os
+
+    if os.getenv("HIMMI_SIMULATOR", "false").lower() == "true":
+        # Simulator Mode for High-Fidelity Demos
+        content = f"Hey there! I'm {state['model_slug']}, running in HimmiRouter Simulator Mode. I don't need real API keys to talk to you right now! How can I help you build the future?"
+
+        if state.get("stream"):
+
+            async def mock_stream():
+                words = content.split(" ")
+                for i, word in enumerate(words):
+                    yield litellm.ModelResponse(
+                        id="chatcmpl-mock",
+                        choices=[
+                            {
+                                "delta": {"content": word + " "},
+                                "finish_reason": None,
+                                "index": 0,
+                            }
+                        ],
+                        model=state["model_slug"],
+                    )
+                    await asyncio.sleep(0.05)
+                yield litellm.ModelResponse(
+                    id="chatcmpl-mock",
+                    choices=[{"delta": {}, "finish_reason": "stop", "index": 0}],
+                    model=state["model_slug"],
+                    usage={"prompt_tokens": 10, "completion_tokens": len(words)},
+                )
+
+            return {"stream_iterator": mock_stream()}
+        else:
+            return {
+                "response_content": content,
+                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+            }
+
     try:
         # LiteLLM handles the standardized call
         provider_name = state["provider_info"]["name"].lower()
