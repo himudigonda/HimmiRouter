@@ -43,36 +43,43 @@ export const PlaygroundPage: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    const fetchData = async () => {
-      const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
-      if (!user.id) return
-      
+    // Always fetch models — no auth required for the catalog
+    const fetchModels = async () => {
       try {
-        const [modelsData, userData] = await Promise.all([
-          ControlService.listModelsModelsGet(),
-          ControlService.getUserStatusUsersUserIdGet(user.id)
-        ])
+        const modelsData = await ControlService.listModelsModelsGet()
         setModels(modelsData)
         setFilteredModels(modelsData)
-        setCredits(userData.credits)
-        
+
         // Check for model in URL query params
         const params = new URLSearchParams(window.location.search)
         const modelParam = params.get("model")
 
         if (modelParam && modelsData.some((m: any) => m.slug === modelParam)) {
           setSelectedModel(modelParam)
-          // Auto-select provider if possible
           const m = modelsData.find((m: any) => m.slug === modelParam)
           if (m?.company?.name) setSelectedProvider(m.company.name)
         } else if (modelsData.length > 0) {
           setSelectedModel(modelsData[0].slug)
         }
       } catch (err) {
-        console.error("Failed to fetch playground data", err)
+        console.error("Failed to fetch models", err)
       }
     }
-    fetchData()
+
+    // Fetch user credits only when logged in
+    const fetchUser = async () => {
+      const user = JSON.parse(localStorage.getItem("himmi_user") || "{}")
+      if (!user.id) return
+      try {
+        const userData = await ControlService.getUserStatusUsersUserIdGet(user.id)
+        setCredits(userData.credits)
+      } catch (err) {
+        console.error("Failed to fetch user data", err)
+      }
+    }
+
+    fetchModels()
+    fetchUser()
   }, [])
 
   useEffect(() => {

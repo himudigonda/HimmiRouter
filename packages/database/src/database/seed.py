@@ -15,13 +15,11 @@ from sqlmodel import select
 
 async def seed_data():
     async with engine.begin() as conn:
-        # Simple sync-style session for seeding
         from sqlalchemy.orm import Session as SyncSession
 
         def sync_seed(connection):
-
             with SyncSession(bind=connection) as session:
-                # helper to get or create
+
                 def get_or_create(model_class, **kwargs):
                     instance = session.execute(
                         select(model_class).filter_by(**kwargs)
@@ -33,118 +31,134 @@ async def seed_data():
                     session.flush()
                     return instance
 
-                # 1. Create Companies
+                # ── 1. COMPANIES ──────────────────────────────────────────────
                 openai_co = get_or_create(
                     Company, name="OpenAI", website="https://openai.com"
-                )
-                google_co = get_or_create(
-                    Company, name="Google", website="https://google.com"
                 )
                 anthropic_co = get_or_create(
                     Company, name="Anthropic", website="https://anthropic.com"
                 )
-                groq_co = get_or_create(
-                    Company, name="Groq", website="https://groq.com"
+                google_co = get_or_create(
+                    Company, name="Google", website="https://google.com"
                 )
-                perplexity_co = get_or_create(
-                    Company, name="Perplexity", website="https://perplexity.ai"
-                )
+                meta_co = get_or_create(Company, name="Meta", website="https://meta.ai")
                 mistral_co = get_or_create(
                     Company, name="Mistral AI", website="https://mistral.ai"
                 )
+                deepseek_co = get_or_create(
+                    Company, name="DeepSeek", website="https://deepseek.com"
+                )
+                xai_co = get_or_create(Company, name="xAI", website="https://x.ai")
+                perplexity_co = get_or_create(
+                    Company, name="Perplexity", website="https://perplexity.ai"
+                )
+                groq_co = get_or_create(
+                    Company, name="Groq", website="https://groq.com"
+                )
+                alibaba_co = get_or_create(
+                    Company, name="Alibaba", website="https://qwen.aliyun.com"
+                )
+                amazon_co = get_or_create(
+                    Company, name="Amazon", website="https://aws.amazon.com"
+                )
+                cohere_co = get_or_create(
+                    Company, name="Cohere", website="https://cohere.com"
+                )
+                microsoft_co = get_or_create(
+                    Company, name="Microsoft", website="https://microsoft.com"
+                )
+                ollama_co = get_or_create(
+                    Company, name="Ollama (Local)", website="https://ollama.com"
+                )
 
-                # 2. Create Providers
+                # ── 2. PROVIDERS ──────────────────────────────────────────────
+                # NOTE: "Groq" = the inference platform (fast LPU API)
+                #       "xAI"  = the company behind Grok chatbot models
                 providers = {
                     "openai": get_or_create(
                         Provider, name="OpenAI", website="https://api.openai.com"
                     ),
-                    "google": get_or_create(
-                        Provider, name="Google AI", website="https://ai.google.dev"
-                    ),
                     "anthropic": get_or_create(
                         Provider, name="Anthropic", website="https://api.anthropic.com"
                     ),
+                    "google": get_or_create(
+                        Provider, name="Google AI", website="https://ai.google.dev"
+                    ),
                     "groq": get_or_create(
                         Provider, name="Groq", website="https://console.groq.com"
+                    ),
+                    "mistral": get_or_create(
+                        Provider, name="Mistral", website="https://console.mistral.ai"
+                    ),
+                    "deepseek": get_or_create(
+                        Provider,
+                        name="DeepSeek",
+                        website="https://platform.deepseek.com",
+                    ),
+                    "xai": get_or_create(
+                        Provider, name="xAI", website="https://x.ai/api"
                     ),
                     "perplexity": get_or_create(
                         Provider,
                         name="Perplexity",
                         website="https://docs.perplexity.ai",
                     ),
-                    "mistral": get_or_create(
-                        Provider, name="Mistral", website="https://console.mistral.ai"
+                    "bedrock": get_or_create(
+                        Provider,
+                        name="Amazon Bedrock",
+                        website="https://aws.amazon.com/bedrock",
+                    ),
+                    "ollama": get_or_create(
+                        Provider, name="Ollama", website="https://ollama.com"
                     ),
                 }
 
-                # 3. Create Models
-                # (Company, Name, Slug, InputCost, OutputCost, ProviderKey)
-                # Costs are in USD per 1M tokens
+                # ── 3. MODELS ─────────────────────────────────────────────────
+                # Format: (company, display_name, slug, input_cost, output_cost, provider_key)
+                # Costs: USD per 1M tokens
                 models_to_seed = [
-                    # OpenAI
-                    (openai_co, "GPT-4o", "gpt-4o", 2.50, 10.00, "openai"),
-                    (openai_co, "GPT-4o Mini", "gpt-4o-mini", 0.15, 0.60, "openai"),
-                    (openai_co, "o1-preview", "o1-preview", 15.00, 60.00, "openai"),
-                    # 2025/2026 Releases
-                    (
-                        openai_co,
-                        "GPT-4.5 (Orion)",
-                        "gpt-4.5-preview",
-                        75.00,
-                        150.00,
-                        "openai",
-                    ),
-                    (
-                        openai_co,
-                        "GPT-5",
-                        "gpt-5",
-                        15.00,
-                        120.00,
-                        "openai",
-                    ),  # Using Pro estimate
+                    # ── OpenAI ────────────────────────────────────────────────
+                    # GPT-5 family
                     (openai_co, "GPT-5.2", "gpt-5.2", 1.75, 14.00, "openai"),
-                    # Anthropic
+                    (openai_co, "GPT-5.2 Pro", "gpt-5.2-pro", 21.00, 168.00, "openai"),
+                    (openai_co, "GPT-5.1", "gpt-5.1", 1.75, 14.00, "openai"),
+                    (openai_co, "GPT-5 Mini", "gpt-5-mini", 0.25, 2.00, "openai"),
+                    (openai_co, "GPT-5 Nano", "gpt-5-nano", 0.05, 0.40, "openai"),
+                    # Codex
                     (
-                        anthropic_co,
-                        "Claude 3.5 Sonnet",
-                        "claude-3-5-sonnet-20240620",
-                        3.00,
-                        15.00,
-                        "anthropic",
+                        openai_co,
+                        "GPT-5.3 Codex",
+                        "gpt-5.3-codex",
+                        1.75,
+                        14.00,
+                        "openai",
                     ),
                     (
-                        anthropic_co,
-                        "Claude 3 Opus",
-                        "claude-3-opus-20240229",
-                        15.00,
-                        75.00,
-                        "anthropic",
-                    ),
-                    # 2025/2026 Releases
-                    (
-                        anthropic_co,
-                        "Claude 3.7 Sonnet",
-                        "claude-3-7-sonnet",
-                        3.00,
-                        15.00,
-                        "anthropic",
+                        openai_co,
+                        "GPT-5.2 Codex",
+                        "gpt-5.2-codex",
+                        1.75,
+                        14.00,
+                        "openai",
                     ),
                     (
-                        anthropic_co,
-                        "Claude 4.5 Sonnet",
-                        "claude-4-5-sonnet",
-                        3.00,
-                        15.00,
-                        "anthropic",
+                        openai_co,
+                        "GPT-5.1 Codex",
+                        "gpt-5.1-codex",
+                        1.75,
+                        14.00,
+                        "openai",
                     ),
-                    (
-                        anthropic_co,
-                        "Claude 4.5 Opus",
-                        "claude-4-5-opus",
-                        5.00,
-                        25.00,
-                        "anthropic",
-                    ),
+                    # o-series reasoning
+                    (openai_co, "o3", "o3", 2.00, 8.00, "openai"),
+                    (openai_co, "o3 Pro", "o3-pro", 20.00, 80.00, "openai"),
+                    (openai_co, "o3 Mini", "o3-mini", 1.10, 4.40, "openai"),
+                    (openai_co, "o4 Mini", "o4-mini", 1.10, 4.40, "openai"),
+                    # GPT-4.1 legacy (still on API)
+                    (openai_co, "GPT-4.1", "gpt-4.1", 3.00, 12.00, "openai"),
+                    (openai_co, "GPT-4.1 Mini", "gpt-4.1-mini", 0.80, 3.20, "openai"),
+                    (openai_co, "GPT-4.1 Nano", "gpt-4.1-nano", 0.20, 0.80, "openai"),
+                    # ── Anthropic (direct) ────────────────────────────────────
                     (
                         anthropic_co,
                         "Claude 4.6 Opus",
@@ -153,24 +167,41 @@ async def seed_data():
                         25.00,
                         "anthropic",
                     ),
-                    # Google
+                    (
+                        anthropic_co,
+                        "Claude 4.6 Sonnet",
+                        "claude-4-6-sonnet",
+                        3.00,
+                        15.00,
+                        "anthropic",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude Haiku 4.5",
+                        "claude-haiku-4.5",
+                        0.80,
+                        4.00,
+                        "anthropic",
+                    ),
+                    # ── Google — Gemini 2.5 (stable GA) + Gemini 3 (preview) ─
+                    # Gemini 3 is still in preview as of Feb 2026
                     (
                         google_co,
-                        "Gemini 1.5 Pro",
-                        "gemini-1.5-pro",
-                        1.25,
-                        5.00,
+                        "Gemini 3 Pro (Preview)",
+                        "gemini-3-pro-preview",
+                        2.00,
+                        12.00,
                         "google",
                     ),
                     (
                         google_co,
-                        "Gemini 1.5 Flash",
-                        "gemini-1.5-flash",
-                        0.075,
-                        0.30,
+                        "Gemini 3 Flash (Preview)",
+                        "gemini-3-flash-preview",
+                        0.50,
+                        3.00,
                         "google",
                     ),
-                    # 2025/2026 Releases
+                    # Gemini 2.5 — stable
                     (
                         google_co,
                         "Gemini 2.5 Pro",
@@ -179,50 +210,69 @@ async def seed_data():
                         10.00,
                         "google",
                     ),
-                    (google_co, "Gemini 3 Pro", "gemini-3-pro", 2.00, 12.00, "google"),
-                    # Groq (Ultra-fast Llama)
                     (
-                        groq_co,
-                        "Llama 3 70B (Groq)",
-                        "llama3-70b-8192",
+                        google_co,
+                        "Gemini 2.5 Flash",
+                        "gemini-2.5-flash",
+                        0.30,
+                        2.50,
+                        "google",
+                    ),
+                    (
+                        google_co,
+                        "Gemini 2.5 Flash-Lite",
+                        "gemini-2.5-flash-lite",
+                        0.10,
+                        0.40,
+                        "google",
+                    ),
+                    # ── Meta via Groq (inference platform) ───────────────────
+                    (
+                        meta_co,
+                        "Llama 4 Maverick",
+                        "llama-4-maverick-instruct",
+                        0.50,
+                        0.77,
+                        "groq",
+                    ),
+                    (
+                        meta_co,
+                        "Llama 4 Scout",
+                        "llama-4-scout-instruct",
+                        0.11,
+                        0.34,
+                        "groq",
+                    ),
+                    (
+                        meta_co,
+                        "Llama 3.3 70B",
+                        "llama-3.3-70b-versatile",
                         0.59,
                         0.79,
                         "groq",
                     ),
                     (
-                        groq_co,
-                        "Llama 3 8B (Groq)",
-                        "llama3-8b-8192",
+                        meta_co,
+                        "Llama 3.1 8B",
+                        "llama-3.1-8b-instant",
                         0.05,
-                        0.10,
+                        0.08,
                         "groq",
                     ),
+                    # ── Alibaba Qwen via Groq ─────────────────────────────────
+                    (alibaba_co, "Qwen3 32B", "qwen3-32b", 0.29, 0.59, "groq"),
+                    # ── DeepSeek (direct) ─────────────────────────────────────
+                    (deepseek_co, "DeepSeek V4", "deepseek-v4", 0.27, 1.10, "deepseek"),
                     (
-                        groq_co,
-                        "Mixtral 8x7b (Groq)",
-                        "mixtral-8x7b-32768",
+                        deepseek_co,
+                        "DeepSeek V3.2",
+                        "deepseek-v3.2",
                         0.27,
-                        0.27,
-                        "groq",
+                        1.10,
+                        "deepseek",
                     ),
-                    # Perplexity (Online)
-                    (
-                        perplexity_co,
-                        "Sonar Large Online",
-                        "llama-3-sonar-large-32k-online",
-                        3.00,
-                        15.00,
-                        "perplexity",
-                    ),
-                    # Mistral
-                    (
-                        mistral_co,
-                        "Mistral Large 2",
-                        "mistral-large-latest",
-                        2.00,
-                        6.00,
-                        "mistral",
-                    ),
+                    (deepseek_co, "DeepSeek R1", "deepseek-r1", 0.55, 2.19, "deepseek"),
+                    # ── Mistral AI (direct) ───────────────────────────────────
                     (
                         mistral_co,
                         "Mistral Large 3",
@@ -233,31 +283,383 @@ async def seed_data():
                     ),
                     (
                         mistral_co,
-                        "Codestral",
-                        "codestral-latest",
-                        0.30,
-                        0.90,
+                        "Mistral Medium 3",
+                        "mistral-medium-3",
+                        0.40,
+                        2.00,
                         "mistral",
                     ),
-                    # xAI (Grok)
                     (
-                        get_or_create(Company, name="xAI", website="https://x.ai"),
-                        "Grok 3",
-                        "grok-3",
+                        mistral_co,
+                        "Mistral Small 3.2",
+                        "mistral-small-3.2",
+                        0.10,
+                        0.30,
+                        "mistral",
+                    ),
+                    (mistral_co, "Mistral Nemo", "mistral-nemo", 0.30, 0.30, "mistral"),
+                    (mistral_co, "Codestral 2", "codestral-2", 0.30, 0.90, "mistral"),
+                    # ── xAI — Grok models ─────────────────────────────────────
+                    (xai_co, "Grok 3", "grok-3", 3.00, 15.00, "xai"),
+                    (xai_co, "Grok 3 Mini", "grok-3-mini", 0.30, 0.50, "xai"),
+                    (xai_co, "Grok 4", "grok-4", 3.00, 15.00, "xai"),
+                    (xai_co, "Grok 4.1", "grok-4.1", 0.20, 0.50, "xai"),
+                    (xai_co, "Grok Code Fast 1", "grok-code-fast-1", 0.20, 1.50, "xai"),
+                    # ── Perplexity ────────────────────────────────────────────
+                    (perplexity_co, "Sonar", "sonar", 1.00, 1.00, "perplexity"),
+                    (
+                        perplexity_co,
+                        "Sonar Pro",
+                        "sonar-pro",
                         3.00,
                         15.00,
-                        "xai",
+                        "perplexity",
+                    ),
+                    (
+                        perplexity_co,
+                        "Sonar Reasoning",
+                        "sonar-reasoning",
+                        1.00,
+                        5.00,
+                        "perplexity",
+                    ),
+                    (
+                        perplexity_co,
+                        "Sonar Reasoning Pro",
+                        "sonar-reasoning-pro",
+                        2.00,
+                        8.00,
+                        "perplexity",
+                    ),
+                    (
+                        perplexity_co,
+                        "Sonar Deep Research",
+                        "sonar-deep-research",
+                        2.00,
+                        8.00,
+                        "perplexity",
+                    ),
+                    # ── Amazon Bedrock ────────────────────────────────────────
+                    # Amazon Nova (Amazon's own)
+                    (
+                        amazon_co,
+                        "Nova Pro",
+                        "amazon.nova-pro-v1:0",
+                        0.80,
+                        3.20,
+                        "bedrock",
+                    ),
+                    (
+                        amazon_co,
+                        "Nova Lite",
+                        "amazon.nova-lite-v1:0",
+                        0.06,
+                        0.24,
+                        "bedrock",
+                    ),
+                    (
+                        amazon_co,
+                        "Nova Micro",
+                        "amazon.nova-micro-v1:0",
+                        0.035,
+                        0.14,
+                        "bedrock",
+                    ),
+                    # Anthropic on Bedrock
+                    (
+                        anthropic_co,
+                        "Claude 4.6 Sonnet (Bedrock)",
+                        "anthropic.claude-sonnet-4-6-20260217-v1:0",
+                        3.00,
+                        15.00,
+                        "bedrock",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude 3.7 Sonnet (Bedrock)",
+                        "anthropic.claude-3-7-sonnet-20250219-v1:0",
+                        3.00,
+                        15.00,
+                        "bedrock",
+                    ),
+                    (
+                        anthropic_co,
+                        "Claude 3.5 Haiku (Bedrock)",
+                        "anthropic.claude-3-5-haiku-20241022-v1:0",
+                        0.80,
+                        4.00,
+                        "bedrock",
+                    ),
+                    # Meta Llama on Bedrock
+                    (
+                        meta_co,
+                        "Llama 3.3 70B (Bedrock)",
+                        "meta.llama3-3-70b-instruct-v1:0",
+                        0.72,
+                        0.72,
+                        "bedrock",
+                    ),
+                    (
+                        meta_co,
+                        "Llama 3.2 90B (Bedrock)",
+                        "meta.llama3-2-90b-instruct-v1:0",
+                        0.72,
+                        0.72,
+                        "bedrock",
+                    ),
+                    (
+                        meta_co,
+                        "Llama 3.1 70B (Bedrock)",
+                        "meta.llama3-1-70b-instruct-v1:0",
+                        0.72,
+                        0.72,
+                        "bedrock",
+                    ),
+                    # Mistral on Bedrock
+                    (
+                        mistral_co,
+                        "Mistral Large 3 (Bedrock)",
+                        "mistral.mistral-large-3-2512-v1:0",
+                        2.00,
+                        6.00,
+                        "bedrock",
+                    ),
+                    # DeepSeek on Bedrock
+                    (
+                        deepseek_co,
+                        "DeepSeek V3.2 (Bedrock)",
+                        "deepseek.deepseek-v3-2-20250514-v1:0",
+                        0.62,
+                        1.85,
+                        "bedrock",
+                    ),
+                    # Cohere on Bedrock
+                    (
+                        cohere_co,
+                        "Command R+",
+                        "cohere.command-r-plus-v1:0",
+                        3.00,
+                        15.00,
+                        "bedrock",
+                    ),
+                    (
+                        cohere_co,
+                        "Command R",
+                        "cohere.command-r-v1:0",
+                        0.50,
+                        1.50,
+                        "bedrock",
+                    ),
+                    # ── Ollama — Local ($0 cost) ──────────────────────────────
+                    # Meta Llama
+                    (
+                        ollama_co,
+                        "Llama 4 8B (Local)",
+                        "ollama/llama4:8b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Llama 4 Scout (Local)",
+                        "ollama/llama4-scout",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Llama 3.3 70B (Local)",
+                        "ollama/llama3.3:70b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Llama 3.2 3B (Local)",
+                        "ollama/llama3.2:3b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Llama 3.1 8B (Local)",
+                        "ollama/llama3.1:8b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    # DeepSeek
+                    (
+                        ollama_co,
+                        "DeepSeek V3.2 (Local)",
+                        "ollama/deepseek-v3.2",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "DeepSeek R1 70B (Local)",
+                        "ollama/deepseek-r1:70b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "DeepSeek R1 32B (Local)",
+                        "ollama/deepseek-r1:32b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "DeepSeek R1 14B (Local)",
+                        "ollama/deepseek-r1:14b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "DeepSeek R1 8B (Local)",
+                        "ollama/deepseek-r1:8b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    # Alibaba Qwen
+                    (
+                        ollama_co,
+                        "Qwen3 235B A22B (Local)",
+                        "ollama/qwen3:235b-a22b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen3 32B (Local)",
+                        "ollama/qwen3:32b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen3 30B (Local)",
+                        "ollama/qwen3:30b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen3 14B (Local)",
+                        "ollama/qwen3:14b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen3 8B (Local)",
+                        "ollama/qwen3:8b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen3 Coder 30B (Local)",
+                        "ollama/qwen3-coder:30b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen2.5 72B (Local)",
+                        "ollama/qwen2.5:72b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Qwen2.5 Coder 32B (Local)",
+                        "ollama/qwen2.5-coder:32b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    # Mistral
+                    (
+                        ollama_co,
+                        "Mistral Large 3 (Local)",
+                        "ollama/mistral-large3",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Mistral Nemo (Local)",
+                        "ollama/mistral-nemo",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    # Google Gemma
+                    (
+                        ollama_co,
+                        "Gemma 3 27B (Local)",
+                        "ollama/gemma3:27b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Gemma 3 12B (Local)",
+                        "ollama/gemma3:12b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Gemma 3 4B (Local)",
+                        "ollama/gemma3:4b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    # Microsoft Phi
+                    (
+                        ollama_co,
+                        "Phi-4 14B (Local)",
+                        "ollama/phi4:14b",
+                        0.00,
+                        0.00,
+                        "ollama",
+                    ),
+                    (
+                        ollama_co,
+                        "Phi-4 Mini (Local)",
+                        "ollama/phi4-mini",
+                        0.00,
+                        0.00,
+                        "ollama",
                     ),
                 ]
 
-                # Update providers dict for xAI
-                xai_provider = get_or_create(
-                    Provider, name="xAI", website="https://x.ai/api"
-                )
-                providers["xai"] = xai_provider
-
                 for co, name, slug, in_cost, out_cost, prov_key in models_to_seed:
-                    # Check if model exists
                     m = session.execute(
                         select(Model).where(Model.slug == slug)
                     ).scalar_one_or_none()
@@ -266,7 +668,6 @@ async def seed_data():
                         session.add(m)
                         session.flush()
 
-                    # Check/Create mapping
                     provider = providers[prov_key]
                     mapping = session.execute(
                         select(ModelProviderMapping).where(
@@ -284,7 +685,7 @@ async def seed_data():
                         )
                         session.add(mapping)
 
-                # 4. Create Default Test User and Organization
+                # ── 4. DEFAULT USER + ORG ─────────────────────────────────────
                 test_org = get_or_create(Organization, name="Personal", credits=100.0)
 
                 test_user_mail = "test@example.com"
@@ -301,6 +702,7 @@ async def seed_data():
                     session.add(test_user)
 
                 session.commit()
+                print(f"✓ Seeded {len(models_to_seed)} models across all providers.")
 
         await conn.run_sync(sync_seed)
 

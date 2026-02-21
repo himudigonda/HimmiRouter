@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import os
 import time
 from datetime import datetime, timezone
 from typing import AsyncGenerator, List, Optional, TypedDict
@@ -57,12 +58,22 @@ LITELLM_PROVIDER_MAP = {
     "Google AI": "gemini",
     "OpenAI": "openai",
     "Anthropic": "anthropic",
-    "Groq": "groq",
+    "Groq": "groq",  # Groq inference platform (fast LPU)
     "Perplexity": "perplexity",
     "Mistral AI": "mistral",
     "Mistral": "mistral",
-    "xAI": "xai",
+    "xAI": "xai",  # xAI Grok models
+    "Meta": "groq",  # Llama 4 served via Groq
+    "DeepSeek": "deepseek",
+    "Amazon Bedrock": "bedrock",  # AWS Bedrock
+    "Ollama (Local)": "ollama",  # Local models via Ollama
 }
+
+# Ollama base URL — override with OLLAMA_BASE_URL env var if running remotely
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+# AWS Bedrock region
+BEDROCK_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
 
 # --- NODES ---
@@ -262,11 +273,19 @@ async def call_llm_node(state: GatewayState):
         if shadow_mode:
             stream = False
 
+        # Build extra kwargs for provider-specific settings
+        extra_kwargs = {}
+        if provider_name == "ollama":
+            extra_kwargs["api_base"] = OLLAMA_BASE_URL
+        elif provider_name == "bedrock":
+            extra_kwargs["aws_region_name"] = BEDROCK_REGION
+
         primary_task = litellm.acompletion(
             model=f"{provider_name}/{model_name}",
             messages=state["messages"],
             stream=stream,
             api_key=user_api_key,
+            **extra_kwargs,
         )
 
         if not shadow_mode:
