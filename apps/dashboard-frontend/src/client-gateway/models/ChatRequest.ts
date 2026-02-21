@@ -7,5 +7,6 @@ export type ChatRequest = {
     model: string;
     messages: Array<ChatMessage>;
     stream?: (boolean | null);
+    shadow_mode?: (boolean | null);
 };
 

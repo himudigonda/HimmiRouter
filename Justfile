@@ -55,3 +55,24 @@ run-all: kill-all
 
 dev: kill-all
 	# Run this in multiple terminals: just run-control, just run-gateway, just run-frontend
+
+# Full nuclear reset — wipes DB, re-migrates, re-seeds, regenerates frontend, starts everything
+restart:
+	@echo "🛑  Killing all running services..."
+	pkill -f uvicorn || true
+	pkill -f "bun dev" || true
+	pkill -f "vite" || true
+	@echo "💥  Destroying Docker volumes (full DB wipe)..."
+	docker compose -f docker-compose.dev.yml down -v
+	@echo "🐳  Starting Docker services..."
+	docker compose -f docker-compose.dev.yml up -d
+	@echo "⏳  Waiting for Postgres to be ready..."
+	sleep 6
+	@echo "📐  Running migrations..."
+	cd packages/database && uv run alembic upgrade head
+	@echo "🌱  Seeding full model catalog (84 models)..."
+	cd packages/database && uv run python -m database.seed
+	@echo "⚙️   Generating OpenAPI specs & TypeScript clients..."
+	just install-frontend
+	@echo "🚀  Starting all services (control :8000 | gateway :4000 | frontend :5173)..."
+	just run-control & just run-gateway & just run-frontend

@@ -42,6 +42,13 @@ export const ModelsPage: React.FC = () => {
     return acc
   }, {} as Record<string, typeof models>)
 
+  const formatContext = (length: number | null | undefined) => {
+    if (!length) return "N/A"
+    if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
+    if (length >= 1000) return `${Math.floor(length / 1000)}k`
+    return length.toString()
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-8 max-w-7xl mx-auto">
@@ -100,13 +107,18 @@ export const ModelsPage: React.FC = () => {
                         >
                           <Card className="h-full glass border border-white/10 hover:border-primary/50 transition-all duration-300 flex flex-col group">
                             <CardHeader className="pb-3">
-                              <div className="flex justify-between items-start gap-4">
-                                <CardTitle className="text-lg font-bold leading-tight">{model.name}</CardTitle>
-                                {model.slug.includes("pro") || model.slug.includes("opus") ? (
-                                  <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-[10px] px-2 py-0.5">PRO</Badge>
-                                ) : (
-                                  <Badge variant="secondary" className="bg-white/10 text-muted-foreground text-[10px] px-2 py-0.5">STD</Badge>
-                                )}
+                              <div className="flex flex-col gap-1">
+                                <div className="flex justify-between items-start gap-4">
+                                  <CardTitle className="text-lg font-bold leading-tight">{model.name}</CardTitle>
+                                  {model.slug.includes("pro") || model.slug.includes("opus") ? (
+                                    <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 text-[10px] px-2 py-0.5">PRO</Badge>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                   <Badge variant="secondary" className="bg-white/10 text-muted-foreground text-[10px] px-2 py-0.5 font-mono">
+                                     {formatContext(model.context_length)} ctx
+                                   </Badge>
+                                </div>
                               </div>
                               <p className="text-xs font-mono text-muted-foreground break-all opacity-70 group-hover:opacity-100 transition-opacity">
                                 {model.slug}

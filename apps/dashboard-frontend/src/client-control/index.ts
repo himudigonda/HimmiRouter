@@ -12,6 +12,7 @@ export type { CompanyResponse } from './models/CompanyResponse';
 export type { HTTPValidationError } from './models/HTTPValidationError';
 export type { MappingResponse } from './models/MappingResponse';
 export type { ModelResponse } from './models/ModelResponse';
+export type { PreferenceRequest } from './models/PreferenceRequest';
 export type { ProviderKeyRequest } from './models/ProviderKeyRequest';
 export type { ValidationError } from './models/ValidationError';
 
