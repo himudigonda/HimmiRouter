@@ -5,7 +5,9 @@ from database.models import (
     ApiKey,
     EvaluationPair,
     Model,
+    ModelProviderMapping,
     Organization,
+    Provider,
     RequestLog,
     User,
     UserProviderKey,
@@ -135,6 +137,7 @@ class CompanyResponse(BaseModel):
 
 
 class MappingResponse(BaseModel):
+    provider: str
     input_token_cost: float
     output_token_cost: float
 
@@ -143,6 +146,7 @@ class ModelResponse(BaseModel):
     id: int
     name: str
     slug: str
+    context_length: Optional[int] = None
     company: Optional[CompanyResponse] = None
     mappings: List[MappingResponse] = []
 
@@ -150,10 +154,34 @@ class ModelResponse(BaseModel):
 @app.get("/models", response_model=List[ModelResponse])
 async def list_models(session: AsyncSession = Depends(get_session)):
     stmt = select(Model).options(
-        selectinload(Model.company), selectinload(Model.mappings)
+        selectinload(Model.company),
+        selectinload(Model.mappings).selectinload(ModelProviderMapping.provider),
     )
     res = await session.execute(stmt)
-    return res.scalars().all()
+    models = res.scalars().all()
+
+    return [
+        {
+            "id": m.id,
+            "name": m.name,
+            "slug": m.slug,
+            "context_length": m.context_length,
+            "company": (
+                {"name": m.company.name, "website": m.company.website}
+                if m.company
+                else None
+            ),
+            "mappings": [
+                {
+                    "provider": mapping.provider.name,
+                    "input_token_cost": mapping.input_token_cost,
+                    "output_token_cost": mapping.output_token_cost,
+                }
+                for mapping in m.mappings
+            ],
+        }
+        for m in models
+    ]
 
 
 @app.get("/users/{user_id}")

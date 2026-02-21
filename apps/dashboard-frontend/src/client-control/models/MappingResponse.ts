@@ -3,6 +3,7 @@
 /* tslint:disable */
 /* eslint-disable */
 export type MappingResponse = {
+    provider: string;
     input_token_cost: number;
     output_token_cost: number;
 };

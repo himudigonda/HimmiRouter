@@ -37,6 +37,13 @@ export const PlaygroundPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [credits, setCredits] = useState<number | null>(null)
   
+  const formatContext = (length: number | null | undefined) => {
+    if (!length) return "N/A"
+    if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
+    if (length >= 1000) return `${Math.floor(length / 1000)}k`
+    return length.toString()
+  }
+
   // Stats
   const [sessionUsage, setSessionUsage] = useState({ requests: 0, tokens: 0, cost: 0 })
   
@@ -73,8 +80,12 @@ export const PlaygroundPage: React.FC = () => {
       try {
         const userData = await ControlService.getUserStatusUsersUserIdGet(user.id)
         setCredits(userData.credits)
-      } catch (err) {
+      } catch (err: any) {
         console.error("Failed to fetch user data", err)
+        if (err.status === 404) {
+          localStorage.removeItem("himmi_user")
+          window.location.href = "/login"
+        }
       }
     }
 
@@ -93,12 +104,17 @@ export const PlaygroundPage: React.FC = () => {
     if (selectedProvider === "All") {
       setFilteredModels(models)
     } else {
-      setFilteredModels(models.filter(m => m.company?.name === selectedProvider))
+      setFilteredModels(models.filter(m => 
+        m.mappings?.some(map => map.provider === selectedProvider)
+      ))
     }
   }, [selectedProvider, models])
   
-  // Extract unique providers
-  const providers = ["All", ...Array.from(new Set(models.map(m => m.company?.name).filter(Boolean)))].sort()
+  // Extract unique providers from mappings
+  const providers = ["All", ...Array.from(new Set(
+    models.flatMap(m => m.mappings?.map(map => map.provider || "") || [])
+    .filter(Boolean)
+  ))].sort()
 
   const handleSend = async () => {
     if (!input.trim() || !selectedModel || isLoading) return
@@ -381,7 +397,7 @@ export const PlaygroundPage: React.FC = () => {
               >
                 {filteredModels.map(m => (
                     <option key={m.id} value={m.slug}>
-                        {m.name} (${m.mappings?.[0]?.input_token_cost}/1M)
+                        {m.name} ({formatContext(m.context_length)} ctx • ${m.mappings?.[0]?.input_token_cost}/1M)
                     </option>
                 ))}
               </select>

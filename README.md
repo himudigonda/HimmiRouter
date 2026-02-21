@@ -82,7 +82,7 @@ Install these before anything else:
 ### Step 1 — Clone & Configure
 
 ```bash
-git clone <your-repo-url> HimmiRouter
+git clone https://www.github.com/himudigonda/HimmiRouter
 cd HimmiRouter
 
 # Copy environment config

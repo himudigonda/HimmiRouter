@@ -102,6 +102,7 @@ class Model(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     slug: str = Field(unique=True)
+    context_length: Optional[int] = Field(default=None)
     company_id: int = Field(foreign_key="company.id")
     company: Company = Relationship(back_populates="models")
     mappings: List["ModelProviderMapping"] = Relationship(back_populates="model")

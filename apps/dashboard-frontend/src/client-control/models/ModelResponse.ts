@@ -8,6 +8,7 @@ export type ModelResponse = {
     id: number;
     name: string;
     slug: string;
+    context_length?: (number | null);
     company?: (CompanyResponse | null);
     mappings?: Array<MappingResponse>;
 };

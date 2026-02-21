@@ -39,8 +39,13 @@ export const DashboardPage: React.FC = () => {
       setUser(status)
       setUsageStats(usage)
       setProviderHealth(health)
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to fetch data", err)
+      // Check if it's a 404 (stale session after DB reset)
+      if (err.status === 404 || (err.body && err.body.detail && err.body.detail.includes("not found"))) {
+        localStorage.removeItem("himmi_user")
+        window.location.href = "/login"
+      }
     }
   }
 
