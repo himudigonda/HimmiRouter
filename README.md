@@ -298,7 +298,3 @@ graph TD
 
 **Credits not updating**
 → The credit refresh happens after the stream completes. Wait for the full response.
-
----
-
-*Built with intensity by Himmi. 2026.*
